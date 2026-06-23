@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Eye, EyeOff, Trophy } from "lucide-react"
+import { Eye, EyeOff, Trophy, ArrowLeft } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -38,22 +38,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background pointer-events-none" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden" style={{ background: "#050a05" }}>
+      {/* Fundo com gradiente verde */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(34,197,94,0.18) 0%, transparent 70%)" }} />
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 50% at 50% 100%, rgba(22,163,74,0.12) 0%, transparent 70%)" }} />
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 40% 40% at 80% 50%, rgba(16,185,129,0.07) 0%, transparent 60%)" }} />
+      </div>
+
+      {/* Botão voltar */}
+      <a
+        href="/"
+        className="absolute top-5 left-5 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Voltar
+      </a>
 
       <div className="relative w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
+          <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-primary/30">
             <Trophy className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">Brejão Arena</h1>
-          <p className="text-muted-foreground text-sm mt-1">Sistema de Gestão</p>
+          <p className="text-muted-foreground text-sm mt-1">Bem-vindo de volta</p>
         </div>
 
         {/* Card */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-xl">
+        <div className="bg-card/80 backdrop-blur-sm border border-border rounded-2xl p-6 shadow-2xl shadow-black/60">
           <p className="text-sm font-semibold text-foreground mb-5">Acesse sua conta</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -109,7 +122,10 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-5">
-          Acesso restrito a administradores e staff
+          Não tem conta?{" "}
+          <a href="/registro" className="text-primary hover:text-primary/80 font-medium transition-colors">
+            Criar conta
+          </a>
         </p>
       </div>
     </div>

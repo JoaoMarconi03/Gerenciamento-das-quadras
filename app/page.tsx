@@ -3,17 +3,14 @@ import { Trophy, Clock, MapPin, Star, ChevronRight, CalendarDays } from "lucide-
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DiasStrip } from "@/components/dias-strip"
-
-const HORARIOS = [
-  "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00",
-  "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00",
-]
+import { HorariosSection } from "@/components/horarios-section"
 
 const PRECOS = [
   { duracao: "1 hora", semana: "R$ 120", fimSemana: "R$ 150" },
   { duracao: "1h30", semana: "R$ 170", fimSemana: "R$ 210" },
   { duracao: "2 horas", semana: "R$ 220", fimSemana: "R$ 270" },
 ]
+
 
 export default function HomePage() {
 
@@ -92,54 +89,14 @@ export default function HomePage() {
 
       {/* Horários */}
       <section id="horarios" className="max-w-5xl mx-auto px-4 py-10">
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-2 mb-2">
           <CalendarDays className="w-5 h-5 text-primary" />
           <h2 className="text-2xl font-bold">Disponibilidade</h2>
         </div>
+        <p className="text-muted-foreground text-sm mb-6">Selecione a duração desejada e veja os horários disponíveis.</p>
 
-        {/* Strip de dias — client component para evitar hydration mismatch */}
         <DiasStrip />
-
-        {/* Grade de horários */}
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <p className="font-semibold text-sm text-muted-foreground">Quadra Principal — Hoje</p>
-          </div>
-          <div className="divide-y divide-border">
-            {HORARIOS.map((hora) => {
-              const ocupado = ["10:00", "14:00", "19:00"].includes(hora)
-              return (
-                <div key={hora} className="flex items-center justify-between px-5 py-3.5">
-                  <span className="font-mono text-sm font-medium">{hora}</span>
-                  <div className="flex items-center gap-3">
-                    {ocupado ? (
-                      <Badge variant="secondary" className="text-xs bg-destructive/15 text-destructive border-0">
-                        Ocupado
-                      </Badge>
-                    ) : (
-                      <>
-                        <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-0">
-                          Disponível
-                        </Badge>
-                        <Button size="sm" variant="outline" asChild>
-                          <Link href="/registro">Reservar</Link>
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <p className="text-xs text-muted-foreground text-center mt-4">
-          Para reservar,{" "}
-          <Link href="/registro" className="text-primary hover:underline">
-            crie sua conta gratuitamente
-          </Link>
-          .
-        </p>
+        <HorariosSection />
       </section>
 
       {/* Preços */}
