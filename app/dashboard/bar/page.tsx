@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { Plus, Minus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
 import { buscarProdutos, criarProduto, atualizarProduto, buscarVendas, criarVenda, atualizarVenda, excluirVenda } from "./actions"
 import { Button } from "@/components/ui/button"
@@ -100,6 +100,8 @@ export default function BarPage() {
   })
   const [itensVenda, setItensVenda] = useState<ItemVenda[]>([])
   const [confirmarExclusao, setConfirmarExclusao] = useState<Venda | null>(null)
+  const [erroVenda, setErroVenda] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
 
   const totalVenda = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
   const faturamentoDia = vendas.reduce((s, v) => s + v.total, 0)
@@ -142,6 +144,7 @@ export default function BarPage() {
     setEditandoVenda(null)
     setFormVenda({ cliente: "", formaPagamento: "DINHEIRO" })
     setItensVenda([])
+    setErroVenda(null)
     setDialogVenda(true)
   }
 
@@ -149,6 +152,7 @@ export default function BarPage() {
     setEditandoVenda(v)
     setFormVenda({ cliente: v.cliente, formaPagamento: v.formaPagamento })
     setItensVenda(v.itens.map((i) => ({ ...i })))
+    setErroVenda(null)
     setDialogVenda(true)
   }
 
@@ -182,22 +186,30 @@ export default function BarPage() {
     setItensVenda((prev) => prev.filter((i) => i.produtoId !== produtoId))
   }
 
-  async function confirmarVenda() {
+  function confirmarVenda() {
     if (itensVenda.length === 0) return
+    setErroVenda(null)
     const payload = {
       cliente: formVenda.cliente.trim(),
       formaPagamento: formVenda.formaPagamento,
       total: totalVenda,
       itens: itensVenda,
     }
-    if (editandoVenda) {
-      await atualizarVenda(editandoVenda.id, payload)
-    } else {
-      await criarVenda(payload)
-    }
-    const lista = await buscarVendas()
-    setVendas(lista)
-    setDialogVenda(false)
+    startTransition(async () => {
+      try {
+        if (editandoVenda) {
+          await atualizarVenda(editandoVenda.id, payload)
+        } else {
+          await criarVenda(payload)
+        }
+        const lista = await buscarVendas()
+        setVendas(lista)
+        setDialogVenda(false)
+      } catch (e) {
+        setErroVenda("Erro ao salvar venda. Tente novamente.")
+        console.error(e)
+      }
+    })
   }
 
   const grupos = ["BEBIDA", "ALIMENTO", "OUTRO"] as const
@@ -485,20 +497,27 @@ export default function BarPage() {
               </p>
             )}
 
+            {erroVenda && (
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                {erroVenda}
+              </p>
+            )}
+
             <div className="flex gap-2 pt-1">
               <Button
                 variant="outline"
                 className="flex-1 border-border"
                 onClick={() => setDialogVenda(false)}
+                disabled={isPending}
               >
                 Cancelar
               </Button>
               <Button
                 className="flex-1"
-                disabled={itensVenda.length === 0}
+                disabled={itensVenda.length === 0 || isPending}
                 onClick={confirmarVenda}
               >
-                {editandoVenda ? "Salvar" : "Confirmar"} — R$ {totalVenda.toFixed(2).replace(".", ",")}
+                {isPending ? "Salvando…" : `${editandoVenda ? "Salvar" : "Confirmar"} — R$ ${totalVenda.toFixed(2).replace(".", ",")}`}
               </Button>
             </div>
           </div>
