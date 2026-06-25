@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
+import { Plus, Minus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
 import { buscarProdutos, criarProduto, atualizarProduto, buscarVendas, criarVenda, atualizarVenda, excluirVenda } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -99,8 +99,6 @@ export default function BarPage() {
     formaPagamento: "DINHEIRO" as FormaPagamento,
   })
   const [itensVenda, setItensVenda] = useState<ItemVenda[]>([])
-  const [itemSelecionado, setItemSelecionado] = useState("")
-  const [itemQtd, setItemQtd] = useState("1")
   const [confirmarExclusao, setConfirmarExclusao] = useState<Venda | null>(null)
 
   const totalVenda = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
@@ -144,8 +142,6 @@ export default function BarPage() {
     setEditandoVenda(null)
     setFormVenda({ cliente: "", formaPagamento: "DINHEIRO" })
     setItensVenda([])
-    setItemSelecionado("")
-    setItemQtd("1")
     setDialogVenda(true)
   }
 
@@ -153,8 +149,6 @@ export default function BarPage() {
     setEditandoVenda(v)
     setFormVenda({ cliente: v.cliente, formaPagamento: v.formaPagamento })
     setItensVenda(v.itens.map((i) => ({ ...i })))
-    setItemSelecionado("")
-    setItemQtd("1")
     setDialogVenda(true)
   }
 
@@ -164,17 +158,24 @@ export default function BarPage() {
     setConfirmarExclusao(null)
   }
 
-  function adicionarItem() {
-    const prod = produtos.find((p) => p.id === itemSelecionado)
+  function selecionarProduto(produtoId: string) {
+    const prod = produtos.find((p) => p.id === produtoId)
     if (!prod) return
-    const qtd = parseInt(itemQtd) || 1
     setItensVenda((prev) => {
       const existe = prev.find((i) => i.produtoId === prod.id)
-      if (existe) return prev.map((i) => i.produtoId === prod.id ? { ...i, quantidade: i.quantidade + qtd } : i)
-      return [...prev, { produtoId: prod.id, nome: prod.nome, preco: prod.preco, quantidade: qtd }]
+      if (existe) return prev.map((i) => i.produtoId === prod.id ? { ...i, quantidade: i.quantidade + 1 } : i)
+      return [...prev, { produtoId: prod.id, nome: prod.nome, preco: prod.preco, quantidade: 1 }]
     })
-    setItemSelecionado("")
-    setItemQtd("1")
+  }
+
+  function ajustarQuantidade(produtoId: string, delta: number) {
+    setItensVenda((prev) =>
+      prev.flatMap((i) => {
+        if (i.produtoId !== produtoId) return [i]
+        const nova = i.quantidade + delta
+        return nova <= 0 ? [] : [{ ...i, quantidade: nova }]
+      })
+    )
   }
 
   function removerItem(produtoId: string) {
@@ -414,68 +415,61 @@ export default function BarPage() {
               </div>
             </div>
 
-            {/* Adicionar item */}
+            {/* Selecionar produto — adiciona direto ao clicar */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Adicionar item</Label>
-              <div className="flex gap-2">
-                <Select value={itemSelecionado} onValueChange={setItemSelecionado}>
-                  <SelectTrigger className="bg-secondary border-border text-foreground flex-1">
-                    <SelectValue placeholder="Selecione o produto" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {produtos.filter((p) => p.ativo).map((p) => (
-                      <SelectItem key={p.id} value={p.id} className="text-foreground">
-                        {p.nome} — R$ {p.preco.toFixed(2)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  min="1"
-                  value={itemQtd}
-                  onChange={(e) => setItemQtd(e.target.value)}
-                  className="bg-secondary border-border text-foreground w-16 text-center"
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={adicionarItem}
-                  disabled={!itemSelecionado}
-                  className="border-border shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
+              <Label className="text-xs text-muted-foreground">Adicionar produto</Label>
+              <Select value="" onValueChange={selecionarProduto}>
+                <SelectTrigger className="bg-secondary border-border text-foreground">
+                  <SelectValue placeholder="Toque para adicionar um produto…" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {produtos.filter((p) => p.ativo).map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="text-foreground">
+                      {p.nome} — R$ {p.preco.toFixed(2)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Lista de itens adicionados */}
+            {/* Lista de itens com controles de quantidade */}
             {itensVenda.length > 0 && (
               <div className="rounded-lg border border-border overflow-hidden">
                 <div className="divide-y divide-border">
                   {itensVenda.map((item) => (
-                    <div key={item.produtoId} className="flex items-center justify-between px-3 py-2.5 bg-secondary/40">
-                      <div>
-                        <span className="text-sm text-foreground font-medium">{item.nome}</span>
-                        {item.quantidade > 1 && (
-                          <span className="text-xs text-muted-foreground ml-1.5">x{item.quantidade}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-primary">
-                          R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}
+                    <div key={item.produtoId} className="flex items-center gap-3 px-3 py-2.5 bg-secondary/40">
+                      <span className="text-sm text-foreground font-medium flex-1 min-w-0 truncate">
+                        {item.nome}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => ajustarQuantidade(item.produtoId, -1)}
+                          className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="text-sm font-semibold text-foreground w-5 text-center">
+                          {item.quantidade}
                         </span>
                         <button
-                          onClick={() => removerItem(item.produtoId)}
-                          className="text-muted-foreground hover:text-destructive transition-colors"
+                          onClick={() => ajustarQuantidade(item.produtoId, 1)}
+                          className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Plus className="w-3 h-3" />
                         </button>
                       </div>
+                      <span className="text-sm font-semibold text-primary shrink-0 w-20 text-right">
+                        R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}
+                      </span>
+                      <button
+                        onClick={() => removerItem(item.produtoId)}
+                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
-                {/* Total */}
                 <div className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border-t border-border">
                   <span className="text-sm font-semibold text-foreground">Total</span>
                   <span className="text-lg font-bold text-primary">
@@ -487,7 +481,7 @@ export default function BarPage() {
 
             {itensVenda.length === 0 && (
               <p className="text-center text-xs text-muted-foreground py-2">
-                Nenhum item adicionado ainda.
+                Selecione um produto acima para adicionar.
               </p>
             )}
 
