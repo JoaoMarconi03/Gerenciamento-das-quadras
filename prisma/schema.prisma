@@ -21,6 +21,7 @@ model Tenant {
   quadras     Quadra[]
   produtos    Produto[]
   planos      Plano[]
+  vendas      Venda[]
 }
 
 // ─────────────────────────────────────────────
@@ -168,6 +169,7 @@ model Produto {
   tenantId    String
   tenant      Tenant           @relation(fields: [tenantId], references: [id])
   lancamentos LancamentoFiado[]
+  itensVenda  ItemVenda[]
   ativo       Boolean          @default(true)
 }
 
@@ -175,6 +177,38 @@ enum CategoriaProduto {
   BEBIDA
   ALIMENTO
   OUTRO
+}
+
+// ─────────────────────────────────────────────
+// BAR — VENDAS
+// ─────────────────────────────────────────────
+
+model Venda {
+  id             String         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  cliente        String?
+  formaPagamento FormaPagamento
+  total          Decimal        @db.Decimal(10, 2)
+  itens          ItemVenda[]
+  criadoEm       DateTime       @default(now())
+}
+
+model ItemVenda {
+  id         String  @id @default(cuid())
+  vendaId    String
+  venda      Venda   @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  produtoId  String
+  produto    Produto @relation(fields: [produtoId], references: [id])
+  nome       String
+  preco      Decimal @db.Decimal(10, 2)
+  quantidade Int
+}
+
+enum FormaPagamento {
+  DINHEIRO
+  PIX
+  CARTAO
 }
 
 // ─────────────────────────────────────────────

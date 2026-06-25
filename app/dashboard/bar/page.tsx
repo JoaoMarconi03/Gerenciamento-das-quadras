@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Plus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
-import { buscarProdutos, criarProduto, atualizarProduto } from "./actions"
+import { buscarProdutos, criarProduto, atualizarProduto, buscarVendas, criarVenda, atualizarVenda, excluirVenda } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -70,9 +70,9 @@ const pagamentoInfo: Record<FormaPagamento, { label: string; icon: React.Element
   CARTAO:   { label: "Cartão/Máq", icon: CreditCard,  cor: "text-purple-400 bg-purple-400/10" },
 }
 
-function horaAgora() {
-  const now = new Date()
-  return `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`
+function fmtHora(iso: string) {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`
 }
 
 // ─── componente ──────────────────────────────────────────────────────────────
@@ -87,6 +87,7 @@ export default function BarPage() {
 
   useEffect(() => {
     buscarProdutos().then(setProdutos)
+    buscarVendas().then(setVendas)
   }, [])
 
   // vendas
@@ -157,7 +158,8 @@ export default function BarPage() {
     setDialogVenda(true)
   }
 
-  function excluirVenda(id: string) {
+  async function handleExcluirVenda(id: string) {
+    await excluirVenda(id)
     setVendas((prev) => prev.filter((v) => v.id !== id))
     setConfirmarExclusao(null)
   }
@@ -179,24 +181,21 @@ export default function BarPage() {
     setItensVenda((prev) => prev.filter((i) => i.produtoId !== produtoId))
   }
 
-  function confirmarVenda() {
+  async function confirmarVenda() {
     if (itensVenda.length === 0) return
-    if (editandoVenda) {
-      setVendas((prev) => prev.map((v) => v.id === editandoVenda.id
-        ? { ...v, cliente: formVenda.cliente.trim(), itens: itensVenda, total: totalVenda, formaPagamento: formVenda.formaPagamento }
-        : v
-      ))
-    } else {
-      const nova: Venda = {
-        id: String(Date.now()),
-        cliente: formVenda.cliente.trim(),
-        itens: itensVenda,
-        total: totalVenda,
-        formaPagamento: formVenda.formaPagamento,
-        hora: horaAgora(),
-      }
-      setVendas((prev) => [nova, ...prev])
+    const payload = {
+      cliente: formVenda.cliente.trim(),
+      formaPagamento: formVenda.formaPagamento,
+      total: totalVenda,
+      itens: itensVenda,
     }
+    if (editandoVenda) {
+      await atualizarVenda(editandoVenda.id, payload)
+    } else {
+      await criarVenda(payload)
+    }
+    const lista = await buscarVendas()
+    setVendas(lista)
     setDialogVenda(false)
   }
 
@@ -253,7 +252,7 @@ export default function BarPage() {
                         <p className="font-semibold text-sm text-foreground">
                           {v.cliente || "Cliente não identificado"}
                         </p>
-                        <span className="text-xs text-muted-foreground">{v.hora}</span>
+                        <span className="text-xs text-muted-foreground">{fmtHora(v.hora)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
                         {v.itens.map((i) => `${i.nome}${i.quantidade > 1 ? ` x${i.quantidade}` : ""}`).join(" · ")}
@@ -366,7 +365,7 @@ export default function BarPage() {
                 <Button
                   variant="destructive"
                   className="flex-1"
-                  onClick={() => excluirVenda(confirmarExclusao.id)}
+                  onClick={() => handleExcluirVenda(confirmarExclusao.id)}
                 >
                   Excluir
                 </Button>
