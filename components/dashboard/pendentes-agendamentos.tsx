@@ -68,26 +68,30 @@ export function PendentesAgendamentos({ pendentes }: { pendentes: Pendente[] }) 
       {aberto && (
         <div className="divide-y divide-yellow-500/10">
           {pendentes.map((p) => (
-            <div key={p.id} className="px-4 py-3 flex items-center gap-4 flex-wrap">
+            <div key={p.id} className="px-4 py-3 space-y-3">
               {/* Info */}
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-9 h-9 rounded-lg bg-yellow-500/15 flex items-center justify-center shrink-0">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-yellow-500/15 flex items-center justify-center shrink-0 mt-0.5">
                   <User className="w-4 h-4 text-yellow-400" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
                     {p.clienteNome ?? "Cliente sem nome"}
                   </p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                     <CalendarDays className="w-3 h-3 shrink-0" />
                     <span className="capitalize">{fmtData(p.inicioData)}</span>
-                    <span>•</span>
-                    <span className="font-mono">{p.inicioHora} → {p.fimHora}</span>
-                    <span>•</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                    <Clock className="w-3 h-3 shrink-0" />
+                    <span className="font-mono font-medium text-foreground/80">
+                      {p.inicioHora} – {p.fimHora}
+                    </span>
+                    <span className="text-muted-foreground/50">•</span>
                     <span>{p.quadraNome}</span>
                   </div>
                   {p.observacao && (
-                    <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+                    <p className="text-xs text-muted-foreground/70 mt-1">
                       Obs: {p.observacao}
                     </p>
                   )}
@@ -95,13 +99,13 @@ export function PendentesAgendamentos({ pendentes }: { pendentes: Pendente[] }) 
               </div>
 
               {/* Ações */}
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={processando === p.id}
                   onClick={() => handleCancelar(p.id)}
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
+                  className="flex-1 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
                 >
                   <XCircle className="w-3.5 h-3.5" />
                   Recusar
@@ -110,7 +114,7 @@ export function PendentesAgendamentos({ pendentes }: { pendentes: Pendente[] }) 
                   size="sm"
                   disabled={processando === p.id}
                   onClick={() => handleAprovar(p.id)}
-                  className="bg-primary gap-1.5"
+                  className="flex-1 bg-primary gap-1.5"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   {processando === p.id ? "Salvando..." : "Aprovar"}

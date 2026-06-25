@@ -177,31 +177,34 @@ export default async function MinhaContaPage() {
               agendamentos.map((ag) => (
                 <div
                   key={ag.id}
-                  className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4"
+                  className="bg-card border border-border rounded-xl p-4"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
                       <CalendarDays className="w-5 h-5 text-muted-foreground" />
                     </div>
-                    <div>
-                      <p className="font-medium text-sm">{formatData(ag)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatHorario(ag)} • {ag.quadra.nome}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-sm capitalize">{formatData(ag)}</p>
+                        <Badge
+                          variant="secondary"
+                          className={`text-xs border-0 shrink-0 ${STATUS_STYLES[ag.status] ?? ""}`}
+                        >
+                          {STATUS_LABEL[ag.status] ?? ag.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {formatHorario(ag)}
                       </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-muted-foreground">{ag.quadra.nome}</p>
+                        {ag.valor != null && (
+                          <span className="text-sm font-semibold text-primary">
+                            R$ {Number(ag.valor).toFixed(2).replace(".", ",")}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    {ag.valor != null && (
-                      <span className="text-sm font-semibold text-primary">
-                        R$ {Number(ag.valor).toFixed(2).replace(".", ",")}
-                      </span>
-                    )}
-                    <Badge
-                      variant="secondary"
-                      className={`text-xs border-0 ${STATUS_STYLES[ag.status] ?? ""}`}
-                    >
-                      {STATUS_LABEL[ag.status] ?? ag.status}
-                    </Badge>
                   </div>
                 </div>
               ))
