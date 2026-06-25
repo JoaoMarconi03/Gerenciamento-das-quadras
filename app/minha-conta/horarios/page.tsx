@@ -3,28 +3,32 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Trophy, ArrowLeft } from "lucide-react"
 import { SignOutButton } from "@/components/sign-out-button"
-import { HorariosCliente } from "@/components/horarios-cliente"
 import { db } from "@/lib/db"
+import { HorariosCliente } from "@/components/horarios-cliente"
 
 export default async function HorariosPage() {
   const session = await auth()
   if (!session?.user) redirect("/login")
 
   const usuarioId = (session.user as any).id
-  const tenantId  = (session.user as any).tenantId
-  const nome      = session.user.name ?? "Cliente"
 
-  const [cliente, quadra] = await Promise.all([
-    db.cliente.findUnique({ where: { usuarioId } }),
-    db.quadra.findFirst({ where: { tenantId, ativa: true } }),
-  ])
+  const cliente = await db.cliente.findUnique({ where: { usuarioId } })
+  if (!cliente) redirect("/minha-conta")
+
+  const quadra = await db.quadra.findFirst({
+    where: { tenantId: cliente.tenantId, ativa: true },
+  })
+  if (!quadra) redirect("/minha-conta")
 
   return (
     <div className="min-h-screen text-foreground">
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/minha-conta" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <Link
+              href="/minha-conta"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
               <ArrowLeft className="w-4 h-4" />
               Minha conta
             </Link>
@@ -40,26 +44,19 @@ export default async function HorariosPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">Horários disponíveis</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Escolha a duração, selecione o dia e clique em Reservar.
+      <main className="max-w-3xl mx-auto px-4 py-6 space-y-2">
+        <div className="mb-4">
+          <h1 className="text-xl font-bold text-foreground">Reservar horário</h1>
+          <p className="text-sm text-muted-foreground">
+            Escolha um horário disponível e selecione a duração.
           </p>
         </div>
 
-        {!cliente || !quadra ? (
-          <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
-            Não foi possível carregar os dados. Fale com o administrador.
-          </div>
-        ) : (
-          <HorariosCliente
-            nomeCliente={nome}
-            clienteId={cliente.id}
-            quadraId={quadra.id}
-            quadraNome={quadra.nome}
-          />
-        )}
+        <HorariosCliente
+          clienteId={cliente.id}
+          quadraId={quadra.id}
+          quadraNome={quadra.nome}
+        />
       </main>
     </div>
   )

@@ -1,23 +1,34 @@
 "use client"
 
-import { useState } from "react"
-import { format, addDays, subDays, isToday } from "date-fns"
+import { useState, useEffect } from "react"
+import {
+  format, addDays, subDays, isToday,
+  endOfMonth, addWeeks, isAfter,
+} from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { ChevronLeft, ChevronRight, Plus, CalendarDays, Lock } from "lucide-react"
+import {
+  ChevronLeft, ChevronRight, Plus, CalendarDays, Lock,
+  Repeat2, AlertTriangle, CheckCircle2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
+  buscarAgendamentosPorData,
+  criarAgendamentoAdmin,
+  criarAgendamentosMensaisAdmin,
+} from "@/app/dashboard/agendamentos/actions"
 
-const SLOT_H = 72
+// ── Constantes ────────────────────────────────────────────────────────────────
+
+const SLOT_H     = 72
 const HOUR_START = 8
-const HOUR_END = 23
+const HOUR_END   = 23
 
 const slots = Array.from({ length: (HOUR_END - HOUR_START) * 2 }, (_, i) => {
   const totalMin = HOUR_START * 60 + i * 30
@@ -26,56 +37,81 @@ const slots = Array.from({ length: (HOUR_END - HOUR_START) * 2 }, (_, i) => {
   return { label: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`, h, m }
 })
 
+const DIAS_SEMANA = ["Domingos", "Segundas-feiras", "Terças-feiras", "Quartas-feiras", "Quintas-feiras", "Sextas-feiras", "Sábados"]
+
+// Slots de FIM incluem 23:00 (um a mais que os de início)
+const slotsFim = Array.from({ length: (HOUR_END - HOUR_START) * 2 + 1 }, (_, i) => {
+  const totalMin = HOUR_START * 60 + i * 30
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return { label: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`, h, m }
+})
+
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
 type Agendamento = {
-  id: string
+  id:          string
   clienteNome: string
-  inicio: { h: number; m: number }
-  duracaoMin: number
-  tipo: "AVULSO" | "MENSALISTA"
-  valor: number
-  status: "CONFIRMADO" | "PENDENTE" | "CANCELADO"
+  inicio:      { h: number; m: number }
+  duracaoMin:  number
+  tipo:        "AVULSO" | "MENSALISTA"
+  valor:       number
+  status:      "CONFIRMADO" | "PENDENTE" | "CANCELADO"
 }
 
-const mockData: Record<string, Agendamento[]> = {
-  "2025-06-23": [
-    { id: "1", clienteNome: "João Silva",   inicio: { h: 8,  m: 0 }, duracaoMin: 90,  tipo: "MENSALISTA", valor: 0,   status: "CONFIRMADO" },
-    { id: "2", clienteNome: "Pedro Santos", inicio: { h: 10, m: 0 }, duracaoMin: 60,  tipo: "AVULSO",     valor: 60,  status: "CONFIRMADO" },
-    { id: "3", clienteNome: "Carlos Lima",  inicio: { h: 14, m: 0 }, duracaoMin: 60,  tipo: "AVULSO",     valor: 60,  status: "PENDENTE"   },
-    { id: "4", clienteNome: "Grupo Digão",  inicio: { h: 19, m: 0 }, duracaoMin: 90,  tipo: "MENSALISTA", valor: 0,   status: "CONFIRMADO" },
-  ],
-  "2025-06-24": [
-    { id: "5", clienteNome: "Ana Oliveira",  inicio: { h: 9,  m: 0 }, duracaoMin: 60,  tipo: "AVULSO", valor: 60,  status: "CONFIRMADO" },
-    { id: "6", clienteNome: "Marcos Torres", inicio: { h: 20, m: 0 }, duracaoMin: 120, tipo: "AVULSO", valor: 120, status: "PENDENTE"   },
-  ],
+type FormState = {
+  tipo:    "AVULSO" | "MENSALISTA"
+  cliente: string
+  dataSel: Date
+  inicio:  string
+  fim:     string
+  valor:   string
 }
 
-function toMin(h: number, m: number) { return h * 60 + m }
-function toTopPx(h: number, m: number) { return ((h - HOUR_START) * 2 + m / 30) * SLOT_H }
-function toDurationPx(min: number) { return (min / 30) * SLOT_H }
-function dateKey(d: Date) { return format(d, "yyyy-MM-dd") }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toMin(h: number, m: number)    { return h * 60 + m }
+function toTopPx(h: number, m: number)  { return ((h - HOUR_START) * 2 + m / 30) * SLOT_H }
+function toDurPx(min: number)           { return (min / 30) * SLOT_H }
+function dateKey(d: Date)               { return format(d, "yyyy-MM-dd") }
 
 function isSlotOccupied(slot: { h: number; m: number }, ags: Agendamento[]) {
-  const slotStart = toMin(slot.h, slot.m)
-  const slotEnd = slotStart + 30
+  const s = toMin(slot.h, slot.m)
   return ags.filter((a) => a.status !== "CANCELADO").some((a) => {
-    const agStart = toMin(a.inicio.h, a.inicio.m)
-    const agEnd = agStart + a.duracaoMin
-    return agStart < slotEnd && agEnd > slotStart
+    const as = toMin(a.inicio.h, a.inicio.m)
+    return as < s + 30 && as + a.duracaoMin > s
   })
 }
 
-function getAvailableSlots(duracaoMin: number, ags: Agendamento[]) {
-  return slots.filter((slot) => {
-    const newStart = toMin(slot.h, slot.m)
-    const newEnd = newStart + duracaoMin
-    if (newEnd > HOUR_END * 60) return false
-    return !ags.filter((a) => a.status !== "CANCELADO").some((a) => {
-      const agStart = toMin(a.inicio.h, a.inicio.m)
-      const agEnd = agStart + a.duracaoMin
-      return newStart < agEnd && newEnd > agStart
-    })
+function gerarDatasMensais(data: Date): Date[] {
+  const fim = endOfMonth(data)
+  const datas: Date[] = []
+  let cur = data
+  while (!isAfter(cur, fim)) {
+    datas.push(new Date(cur))
+    cur = addWeeks(cur, 1)
+  }
+  return datas
+}
+
+function conflitosNoPeriodo(inicioStr: string, fimStr: string, ags: Agendamento[]) {
+  const [ih, im] = inicioStr.split(":").map(Number)
+  const [fh, fm] = fimStr.split(":").map(Number)
+  const start = toMin(ih, im)
+  const end   = toMin(fh, fm)
+  if (end <= start) return []
+  return ags.filter((a) => a.status !== "CANCELADO").filter((a) => {
+    const as = toMin(a.inicio.h, a.inicio.m)
+    const ae = as + a.duracaoMin
+    return start < ae && end > as
   })
 }
+
+function fmt(h: number, m: number) {
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`
+}
+
+// ── Cores de status ───────────────────────────────────────────────────────────
 
 const statusColor: Record<string, string> = {
   CONFIRMADO: "bg-primary/20 border-primary/40 text-primary",
@@ -83,61 +119,150 @@ const statusColor: Record<string, string> = {
   CANCELADO:  "bg-red-500/20 border-red-500/40 text-red-400",
 }
 
-export function CalendarioAgendamentos() {
-  const [date, setDate] = useState(new Date(2025, 5, 23))
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState({ inicio: "08:00", cliente: "", duracao: "60", tipo: "AVULSO", valor: "60", observacao: "" })
+// ── Componente ────────────────────────────────────────────────────────────────
+
+export function CalendarioAgendamentos({
+  quadraId,
+  quadraNome,
+}: {
+  quadraId:  string
+  quadraNome: string
+}) {
+  const [date, setDate]               = useState(new Date())
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
+  const [dialogOpen, setDialogOpen]   = useState(false)
+  const [salvando, setSalvando]       = useState(false)
+  const [erro, setErro]               = useState("")
+  const [sucesso, setSucesso]         = useState("")
+
+  const [form, setForm] = useState<FormState>({
+    tipo:    "AVULSO",
+    cliente: "",
+    dataSel: new Date(),
+    inicio:  "08:00",
+    fim:     "09:00",
+    valor:   "",
+  })
+  const [calAberto, setCalAberto] = useState(false)
 
   const key = dateKey(date)
-  const agendamentos = mockData[key] ?? []
-  const availableSlots = getAvailableSlots(parseInt(form.duracao), agendamentos)
-  const inicioValido = availableSlots.some((s) => s.label === form.inicio)
 
-  function openDialog(slot?: { h: number; m: number }) {
-    const avail = getAvailableSlots(60, agendamentos)
-    const preferred = slot ? `${slot.h.toString().padStart(2, "0")}:${slot.m.toString().padStart(2, "0")}` : avail[0]?.label ?? "08:00"
-    const inicio = avail.some((s) => s.label === preferred) ? preferred : avail[0]?.label ?? "08:00"
-    setForm({ inicio, cliente: "", duracao: "60", tipo: "AVULSO", valor: "60", observacao: "" })
+  useEffect(() => {
+    buscarAgendamentosPorData(key)
+      .then(setAgendamentos)
+      .catch((err) => console.error("[agendamentos] erro ao buscar:", err))
+  }, [key])
+
+  const datasMensais = form.tipo === "MENSALISTA" ? gerarDatasMensais(form.dataSel) : []
+  const conflitos    = conflitosNoPeriodo(form.inicio, form.fim, agendamentos)
+  const ocupado      = conflitos.length > 0
+  const fimValido    = toMin(...(form.fim.split(":").map(Number) as [number, number])) >
+                       toMin(...(form.inicio.split(":").map(Number) as [number, number]))
+  const formValido   = !!form.cliente.trim() && !!form.valor && fimValido
+
+  // ── Handlers ──
+
+  function abrirDialog(slot?: { h: number; m: number }) {
+    const inicioH = slot?.h ?? 8
+    const inicioM = slot?.m ?? 0
+    const fimMin  = inicioH * 60 + inicioM + 60
+    const inicio  = `${inicioH.toString().padStart(2, "0")}:${inicioM.toString().padStart(2, "0")}`
+    const fim     = `${Math.floor(fimMin / 60).toString().padStart(2, "0")}:${(fimMin % 60).toString().padStart(2, "0")}`
+    setForm({
+      tipo:    "AVULSO",
+      cliente: "",
+      dataSel: date,
+      inicio,
+      fim,
+      valor:   "",
+    })
+    setCalAberto(false)
+    setErro("")
+    setSucesso("")
     setDialogOpen(true)
   }
 
-  function handleDurationChange(val: string) {
-    const duracaoMin = parseInt(val)
-    const valor = Math.round((duracaoMin / 60) * 60)
-    setForm((f) => {
-      const avail = getAvailableSlots(duracaoMin, agendamentos)
-      const inicio = avail.some((s) => s.label === f.inicio) ? f.inicio : avail[0]?.label ?? f.inicio
-      return { ...f, duracao: val, inicio, valor: f.tipo === "MENSALISTA" ? "0" : String(valor) }
-    })
+  async function confirmar() {
+    if (!quadraId || !formValido) return
+    setSalvando(true)
+    setErro("")
+    setSucesso("")
+
+    try {
+      const dataISO  = format(form.dataSel, "yyyy-MM-dd")
+      const valor    = parseFloat(form.valor.replace(",", "."))
+      const [ih, im] = form.inicio.split(":").map(Number)
+      const [fh, fm] = form.fim.split(":").map(Number)
+      const duracaoMin = toMin(fh, fm) - toMin(ih, im)
+
+      if (form.tipo === "AVULSO") {
+        await criarAgendamentoAdmin({
+          quadraId,
+          nomeCliente: form.cliente.trim(),
+          data:        dataISO,
+          horaInicio:  form.inicio,
+          duracaoMin,
+          tipo:        "AVULSO",
+          valor,
+        })
+        setSucesso("Agendamento criado com sucesso!")
+      } else {
+        await criarAgendamentosMensaisAdmin({
+          quadraId,
+          nomeCliente: form.cliente.trim(),
+          dataInicio:  dataISO,
+          horaInicio:  form.inicio,
+          duracaoMin,
+          valor,
+        })
+        setSucesso(`${datasMensais.length} agendamento${datasMensais.length !== 1 ? "s" : ""} criado${datasMensais.length !== 1 ? "s" : ""}!`)
+      }
+
+      const lista = await buscarAgendamentosPorData(key)
+      setAgendamentos(lista)
+      setTimeout(() => setDialogOpen(false), 900)
+    } catch {
+      setErro("Erro ao criar agendamento. Tente novamente.")
+    } finally {
+      setSalvando(false)
+    }
   }
+
+  // ── JSX ──
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Top bar */}
+
+      {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-4 lg:px-6 py-4 border-b border-border shrink-0">
         <div>
           <h1 className="text-xl font-bold text-foreground">Agendamentos</h1>
-          <p className="text-sm text-muted-foreground">Quadra Principal</p>
+          <p className="text-sm text-muted-foreground">{quadraNome}</p>
         </div>
-        <Button onClick={() => openDialog()} className="gap-2">
+        <Button onClick={() => abrirDialog()} className="gap-2">
           <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Novo</span>
+          <span className="hidden sm:inline">Novo agendamento</span>
+          <span className="sm:hidden">Novo</span>
         </Button>
       </div>
 
-      {/* Date navigation */}
-      <div className="flex items-center gap-3 px-4 lg:px-6 py-3 border-b border-border shrink-0 overflow-x-auto">
+      {/* ── Navegação de datas ── */}
+      <div className="flex items-center gap-2 px-4 lg:px-6 py-3 border-b border-border shrink-0 overflow-x-auto">
         <Button variant="ghost" size="icon" onClick={() => setDate((d) => subDays(d, 1))} className="shrink-0">
           <ChevronLeft className="w-4 h-4" />
         </Button>
         <div className="flex gap-1 flex-1 justify-center">
           {Array.from({ length: 7 }, (_, i) => {
-            const d = addDays(subDays(date, 3), i)
+            const d      = addDays(subDays(date, 3), i)
             const active = dateKey(d) === dateKey(date)
-            const today = isToday(d)
+            const today  = isToday(d)
             return (
-              <button key={i} onClick={() => setDate(d)}
-                className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg transition-all shrink-0 ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+              <button
+                key={i}
+                onClick={() => setDate(d)}
+                className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg transition-all shrink-0 ${
+                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                }`}
               >
                 <span className="text-[10px] uppercase font-medium">{format(d, "EEE", { locale: ptBR }).slice(0, 3)}</span>
                 <span className={`text-base font-bold leading-tight ${today && !active ? "text-primary" : ""}`}>{format(d, "d")}</span>
@@ -154,12 +279,11 @@ export function CalendarioAgendamentos() {
         </Button>
       </div>
 
-      {/* Legenda */}
+      {/* ── Legenda ── */}
       <div className="flex items-center gap-4 px-4 lg:px-6 py-2 border-b border-border shrink-0">
         {[
-          { color: "bg-primary/20 border-primary/40", label: "Confirmado" },
-          { color: "bg-yellow-500/20 border-yellow-500/40", label: "Pendente" },
-          { color: "bg-muted border-border", label: "Bloqueado" },
+          { color: "bg-primary/20 border-primary/40",       label: "Confirmado" },
+          { color: "bg-yellow-500/20 border-yellow-500/40", label: "Pendente"   },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <div className={`w-3 h-3 rounded-sm border ${color}`} />
@@ -168,7 +292,7 @@ export function CalendarioAgendamentos() {
         ))}
       </div>
 
-      {/* Grid */}
+      {/* ── Grid de horários ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex min-w-[280px]">
           <div className="w-14 shrink-0">
@@ -183,9 +307,13 @@ export function CalendarioAgendamentos() {
             {slots.map((slot) => {
               const occupied = isSlotOccupied(slot, agendamentos)
               return (
-                <div key={slot.label} style={{ height: SLOT_H }}
-                  onClick={() => !occupied && openDialog(slot)}
-                  className={`border-b transition-colors relative ${slot.m === 0 ? "border-border" : "border-border/30"} ${occupied ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer hover:bg-primary/5"}`}
+                <div
+                  key={slot.label}
+                  style={{ height: SLOT_H }}
+                  onClick={() => !occupied && abrirDialog(slot)}
+                  className={`border-b transition-colors relative ${slot.m === 0 ? "border-border" : "border-border/30"} ${
+                    occupied ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer hover:bg-primary/5"
+                  }`}
                 >
                   {occupied && <Lock className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />}
                 </div>
@@ -193,27 +321,29 @@ export function CalendarioAgendamentos() {
             })}
 
             {agendamentos.map((ag) => {
-              const top = toTopPx(ag.inicio.h, ag.inicio.m)
-              const height = toDurationPx(ag.duracaoMin)
-              const endMin = toMin(ag.inicio.h, ag.inicio.m) + ag.duracaoMin
-              const inicioStr = `${ag.inicio.h.toString().padStart(2, "0")}:${ag.inicio.m.toString().padStart(2, "0")}`
-              const fimStr = `${Math.floor(endMin / 60).toString().padStart(2, "0")}:${(endMin % 60).toString().padStart(2, "0")}`
-              const isTiny = height < 55
-              const isCompact = height < 90
+              const top     = toTopPx(ag.inicio.h, ag.inicio.m)
+              const height  = toDurPx(ag.duracaoMin)
+              const endMin  = toMin(ag.inicio.h, ag.inicio.m) + ag.duracaoMin
+              const iniStr  = `${ag.inicio.h.toString().padStart(2, "0")}:${ag.inicio.m.toString().padStart(2, "0")}`
+              const fimStr  = `${Math.floor(endMin / 60).toString().padStart(2, "0")}:${(endMin % 60).toString().padStart(2, "0")}`
+              const isTiny  = height < 55
+              const isSmall = height < 90
 
               return (
-                <div key={ag.id} style={{ top, height, left: 4, right: 4 }}
-                  className={`absolute rounded-lg border overflow-hidden cursor-pointer select-none ${statusColor[ag.status]}`}
+                <div
+                  key={ag.id}
+                  style={{ top, height, left: 4, right: 4 }}
+                  className={`absolute rounded-lg border overflow-hidden select-none ${statusColor[ag.status]}`}
                 >
                   {isTiny ? (
                     <div className="h-full px-3 flex items-center justify-between gap-2">
-                      <span className="font-mono font-bold text-sm">{inicioStr} → {fimStr}</span>
+                      <span className="font-mono font-bold text-sm">{iniStr} → {fimStr}</span>
                       <span className="text-[10px] font-semibold opacity-70 uppercase tracking-wide shrink-0">Ocupado</span>
                     </div>
-                  ) : isCompact ? (
+                  ) : isSmall ? (
                     <div className="h-full px-3 py-1.5 flex flex-col justify-center gap-0.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono font-bold text-sm">{inicioStr} → {fimStr}</span>
+                        <span className="font-mono font-bold text-sm">{iniStr} → {fimStr}</span>
                         <span className="text-[10px] font-bold opacity-70 uppercase tracking-wide shrink-0">Ocupado</span>
                       </div>
                       <p className="text-xs opacity-80 truncate">{ag.clienteNome}</p>
@@ -222,7 +352,7 @@ export function CalendarioAgendamentos() {
                     <>
                       <div className="bg-black/20 px-3 py-1.5 flex items-center justify-between gap-2">
                         <span className="font-mono font-bold text-base leading-none tracking-wide">
-                          {inicioStr}<span className="opacity-50 mx-1.5 font-normal">→</span>{fimStr}
+                          {iniStr}<span className="opacity-50 mx-1.5 font-normal">→</span>{fimStr}
                         </span>
                         <span className="text-xs font-bold uppercase tracking-widest opacity-80">Ocupado</span>
                       </div>
@@ -244,76 +374,238 @@ export function CalendarioAgendamentos() {
         </div>
       </div>
 
-      {/* Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-md">
+      {/* ── Dialog: Novo Agendamento ── */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!salvando) setDialogOpen(open) }}>
+        <DialogContent className="bg-card border-border w-full max-w-md mx-auto max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Novo Agendamento</DialogTitle>
+            <DialogTitle className="text-foreground text-lg">Novo Agendamento</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-1">
-            {availableSlots.length === 0 && (
-              <div className="flex items-start gap-2 px-3 py-3 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-sm">
-                <Lock className="w-4 h-4 mt-0.5 shrink-0" />
-                Não há horários disponíveis para esta duração. Tente uma duração menor ou outro dia.
+
+          <div className="space-y-5 pt-1 pb-2">
+
+            {/* ── Tipo ── */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { value: "AVULSO",     label: "Avulso",      desc: "Dia único",   Icon: CalendarDays },
+                  { value: "MENSALISTA", label: "Mensalista",  desc: "Todo o mês",  Icon: Repeat2      },
+                ] as const).map(({ value, label, desc, Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, tipo: value }))}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                      form.tipo === value
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    <Icon className={`w-5 h-5 ${form.tipo === value ? "text-primary" : ""}`} />
+                    <div className="text-center">
+                      <p className="font-semibold text-sm leading-tight">{label}</p>
+                      <p className="text-xs opacity-60 mt-0.5">{desc}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Nome do cliente ── */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Nome do Cliente
+              </Label>
+              <Input
+                placeholder="Ex: João Silva"
+                value={form.cliente}
+                onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
+              />
+            </div>
+
+            {/* ── Data ── */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Data</Label>
+              <Popover open={calAberto} onOpenChange={setCalAberto}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full h-11 flex items-center gap-2 px-3 rounded-md border border-border bg-secondary text-foreground text-sm font-normal hover:bg-secondary/80 transition-colors"
+                  >
+                    <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+                    {format(form.dataSel, "dd/MM/yyyy")}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="p-2">
+                  <Calendar
+                    mode="single"
+                    selected={form.dataSel}
+                    onSelect={(d) => {
+                      if (d) {
+                        setForm((f) => ({ ...f, dataSel: d }))
+                        setDate(d)
+                        setCalAberto(false)
+                      }
+                    }}
+                    locale={ptBR}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* ── Início + Término ── */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Início</Label>
+                <Select
+                  value={form.inicio}
+                  onValueChange={(v) => {
+                    const [ih, im] = v.split(":").map(Number)
+                    const fimMin   = ih * 60 + im + 60
+                    const novoFim  = `${Math.floor(fimMin / 60).toString().padStart(2, "0")}:${(fimMin % 60).toString().padStart(2, "0")}`
+                    const [fh, fm] = form.fim.split(":").map(Number)
+                    const fimAtualValido = toMin(fh, fm) > toMin(ih, im)
+                    setForm((f) => ({ ...f, inicio: v, fim: fimAtualValido ? f.fim : novoFim }))
+                  }}
+                >
+                  <SelectTrigger className="bg-secondary border-border text-foreground h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border max-h-56">
+                    {slots.map((s) => (
+                      <SelectItem key={s.label} value={s.label} className="text-foreground">
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Término</Label>
+                <Select
+                  value={form.fim}
+                  onValueChange={(v) => setForm((f) => ({ ...f, fim: v }))}
+                >
+                  <SelectTrigger className="bg-secondary border-border text-foreground h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border max-h-56">
+                    {slotsFim
+                      .filter((s) => {
+                        const [ih, im] = form.inicio.split(":").map(Number)
+                        return toMin(s.h, s.m) > toMin(ih, im)
+                      })
+                      .map((s) => (
+                        <SelectItem key={s.label} value={s.label} className="text-foreground">
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* ── Preview mensalista ── */}
+            {form.tipo === "MENSALISTA" && datasMensais.length > 0 && (
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Repeat2 className="w-4 h-4 text-primary shrink-0" />
+                  <p className="text-sm font-semibold text-foreground">
+                    {datasMensais.length} agendamento{datasMensais.length !== 1 ? "s" : ""} serão criados
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {DIAS_SEMANA[datasMensais[0].getDay()]} · até {format(endOfMonth(datasMensais[0]), "dd/MM/yyyy")}
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {datasMensais.map((d, i) => (
+                    <span key={i} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-md font-medium">
+                      {format(d, "dd/MM")}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Data</Label>
-                <Input type="date" defaultValue={format(date, "yyyy-MM-dd")} className="bg-secondary border-border text-foreground" />
+
+            {/* ── Aviso de conflito ── */}
+            {ocupado && (
+              <div className="flex gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold">Conflito de horário</p>
+                  <p className="text-xs opacity-80">
+                    {conflitos.length === 1 ? "Já existe um agendamento" : "Já existem agendamentos"} neste período:
+                  </p>
+                  <ul className="space-y-0.5">
+                    {conflitos.map((c) => {
+                      const fimMin = toMin(c.inicio.h, c.inicio.m) + c.duracaoMin
+                      const fimH   = Math.floor(fimMin / 60)
+                      const fimM   = fimMin % 60
+                      return (
+                        <li key={c.id} className="text-xs font-medium">
+                          • {c.clienteNome} — {fmt(c.inicio.h, c.inicio.m)} às {fmt(fimH, fimM)}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  Início
-                  {availableSlots.length > 0 && <span className="ml-1.5 text-primary font-normal">({availableSlots.length} disponíveis)</span>}
-                </Label>
-                <Select value={inicioValido ? form.inicio : ""} onValueChange={(v) => setForm((f) => ({ ...f, inicio: v }))} disabled={availableSlots.length === 0}>
-                  <SelectTrigger className="bg-secondary border-border text-foreground"><SelectValue placeholder="Nenhum disponível" /></SelectTrigger>
-                  <SelectContent className="bg-popover border-border max-h-56">
-                    {availableSlots.map((s) => <SelectItem key={s.label} value={s.label} className="text-foreground">{s.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
+
+            {/* ── Valor ── */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Duração</Label>
-              <Select value={form.duracao} onValueChange={handleDurationChange}>
-                <SelectTrigger className="bg-secondary border-border text-foreground"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {[["60","1 hora"],["90","1h30"],["120","2 horas"],["150","2h30"],["180","3 horas"],["210","3h30"],["240","4 horas"]].map(([v, l]) => (
-                    <SelectItem key={v} value={v} className="text-foreground">{l}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Cliente</Label>
-              <Input placeholder="Nome do cliente" value={form.cliente} onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))} className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Tipo</Label>
-                <Select value={form.tipo} onValueChange={(v) => setForm((f) => ({ ...f, tipo: v, valor: v === "MENSALISTA" ? "0" : f.valor }))}>
-                  <SelectTrigger className="bg-secondary border-border text-foreground"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    <SelectItem value="AVULSO" className="text-foreground">Avulso</SelectItem>
-                    <SelectItem value="MENSALISTA" className="text-foreground">Mensalista</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Valor (R$)</Label>
-                <Input type="number" value={form.valor} onChange={(e) => setForm((f) => ({ ...f, valor: e.target.value }))} disabled={form.tipo === "MENSALISTA"} className="bg-secondary border-border text-foreground disabled:opacity-50" />
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Valor por sessão (R$)
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">R$</span>
+                <Input
+                  type="number"
+                  step="0.50"
+                  min="0"
+                  placeholder="0,00"
+                  value={form.valor}
+                  onChange={(e) => setForm((f) => ({ ...f, valor: e.target.value }))}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11 pl-9"
+                />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Observação (opcional)</Label>
-              <Input placeholder="Ex: trazer bola..." value={form.observacao} onChange={(e) => setForm((f) => ({ ...f, observacao: e.target.value }))} className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
+
+            {/* ── Feedback ── */}
+            {erro && (
+              <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                {erro}
+              </div>
+            )}
+            {sucesso && (
+              <div className="flex items-center gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded-xl px-3 py-2.5">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                {sucesso}
+              </div>
+            )}
+
+            {/* ── Botões ── */}
+            <div className="flex gap-3 pt-1">
+              <Button
+                variant="outline"
+                className="flex-1 h-11 border-border"
+                onClick={() => setDialogOpen(false)}
+                disabled={salvando}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 h-11 font-semibold"
+                onClick={confirmar}
+                disabled={!formValido || salvando || ocupado}
+              >
+                {salvando ? "Salvando..." : "Confirmar"}
+              </Button>
             </div>
-            <div className="flex gap-2 pt-1">
-              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button className="flex-1" disabled={availableSlots.length === 0 || !inicioValido} onClick={() => setDialogOpen(false)}>Confirmar</Button>
-            </div>
+
           </div>
         </DialogContent>
       </Dialog>

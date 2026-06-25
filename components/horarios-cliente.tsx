@@ -1,448 +1,318 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { Lock, CheckCircle2, Clock, XCircle, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { format, addDays, subDays, isToday } from "date-fns"
+import { ptBR } from "date-fns/locale"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { criarReserva, buscarOcupacoes } from "@/app/minha-conta/horarios/actions"
+  ChevronLeft, ChevronRight, Clock, Lock,
+  CheckCircle2, AlertTriangle,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { buscarOcupacoes, criarReserva } from "@/app/minha-conta/horarios/actions"
+
+// ── Constantes ────────────────────────────────────────────────────────────────
+
+const HOUR_START = 8
+const HOUR_END   = 23
 
 const DURACOES = [
-  { label: "1 hora",  min: 60  },
-  { label: "1h30",    min: 90  },
-  { label: "2 horas", min: 120 },
-  { label: "2h30",    min: 150 },
-  { label: "3 horas", min: 180 },
+  { min: 60,  label: "1 hora"  },
+  { min: 90,  label: "1h 30"   },
+  { min: 120, label: "2 horas" },
 ]
 
-const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+type Ocupacao = { inicio: string; fim: string }
 
-function toMin(hora: string) {
-  const [h, m] = hora.split(":").map(Number)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toMin(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number)
   return h * 60 + m
 }
 
-function toStr(min: number) {
+function fmtMin(min: number) {
   return `${Math.floor(min / 60).toString().padStart(2, "0")}:${(min % 60).toString().padStart(2, "0")}`
 }
 
-function formatDuracao(min: number) {
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  if (m === 0) return `${h}h livres`
-  return `${h}h${m.toString().padStart(2, "0")} livres`
+function adicionarMin(hhmm: string, min: number) {
+  return fmtMin(toMin(hhmm) + min)
 }
 
-function formatData(date: Date) {
-  return date.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })
+function slotEstaOcupado(slot: string, ocupacoes: Ocupacao[]) {
+  const s = toMin(slot)
+  return ocupacoes.some((o) => toMin(o.inicio) <= s && toMin(o.fim) > s)
 }
 
-type BlocoLivre   = { tipo: "livre";   inicio: string; fim: string; duracaoMin: number }
-type BlocoOcupado = { tipo: "ocupado"; inicio: string; fim: string }
-type Bloco = BlocoLivre | BlocoOcupado
-
-function buildTimeline(ocp: { inicio: string; fim: string }[]): Bloco[] {
-  const blocos: Bloco[] = []
-  let current = 8 * 60
-  const end = 23 * 60
-
-  const sorted = [...ocp].sort((a, b) => toMin(a.inicio) - toMin(b.inicio))
-
-  for (const ocupado of sorted) {
-    const bStart = toMin(ocupado.inicio)
-    const bEnd   = toMin(ocupado.fim)
-    if (current < bStart) {
-      blocos.push({ tipo: "livre", inicio: toStr(current), fim: toStr(bStart), duracaoMin: bStart - current })
-    }
-    blocos.push({ tipo: "ocupado", inicio: toStr(bStart), fim: toStr(bEnd) })
-    current = bEnd
-  }
-
-  if (current < end) {
-    blocos.push({ tipo: "livre", inicio: toStr(current), fim: toStr(end), duracaoMin: end - current })
-  }
-
-  return blocos
+function conflitosNoPeriodo(inicio: string, fim: string, ocupacoes: Ocupacao[]) {
+  const s = toMin(inicio), e = toMin(fim)
+  return ocupacoes.filter((o) => toMin(o.inicio) < e && toMin(o.fim) > s)
 }
 
-type Props = {
-  nomeCliente: string
-  clienteId: string
-  quadraId: string
+// ── Componente ────────────────────────────────────────────────────────────────
+
+export function HorariosCliente({
+  clienteId,
+  quadraId,
+  quadraNome,
+}: {
+  clienteId:  string
+  quadraId:   string
   quadraNome: string
-}
-
-export function HorariosCliente({ nomeCliente, clienteId, quadraId, quadraNome }: Props) {
-  const [duracaoMin, setDuracaoMin] = useState(60)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [horarioSelecionado, setHorarioSelecionado] = useState<{ inicio: string; fim: string } | null>(null)
-  const [observacao, setObservacao] = useState("")
-  const [confirmado, setConfirmado] = useState(false)
-  const [erro, setErro] = useState("")
-  const [inicioSelecionado, setInicioSelecionado] = useState("08:00")
+}) {
+  const [date, setDate]             = useState(new Date())
+  const [ocupacoes, setOcupacoes]   = useState<Ocupacao[]>([])
+  const [slotAberto, setSlotAberto] = useState<string | null>(null)
+  const [duracaoSel, setDuracaoSel] = useState<number | null>(null)
+  const [sucesso, setSucesso]       = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // Navegação de dias
-  const hoje = new Date()
-  const [offset, setOffset] = useState(0)
-  const dataAtual = new Date(hoje)
-  dataAtual.setDate(hoje.getDate() + offset)
-
-  const dias = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(hoje)
-    d.setDate(hoje.getDate() + i)
-    return d
-  })
-
-  const [ocupacoes, setOcupacoes] = useState<{ inicio: string; fim: string }[]>([])
-  const [carregando, setCarregando] = useState(true)
+  const dateStr = format(date, "yyyy-MM-dd")
 
   useEffect(() => {
-    setCarregando(true)
-    const d = new Date()
-    d.setDate(d.getDate() + offset)
-    const dataStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    buscarOcupacoes(quadraId, dataStr)
-      .then(setOcupacoes)
-      .finally(() => setCarregando(false))
-  }, [offset, quadraId])
+    setSlotAberto(null)
+    setDuracaoSel(null)
+    setSucesso(null)
+    buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
+  }, [dateStr, quadraId])
 
-  const timeline = buildTimeline(ocupacoes)
-
-  function abrirModal(preInicio?: string) {
-    const inicio = preInicio ?? "08:00"
-    setInicioSelecionado(inicio)
-    setHorarioSelecionado({ inicio, fim: toStr(toMin(inicio) + duracaoMin) })
-    setObservacao("")
-    setConfirmado(false)
-    setModalOpen(true)
+  // Gera slots de 30 em 30 min: 08:00, 08:30 … 22:30
+  const slots: string[] = []
+  for (let min = HOUR_START * 60; min < HOUR_END * 60; min += 30) {
+    slots.push(fmtMin(min))
   }
 
-  function handleInicioChange(hora: string) {
-    setInicioSelecionado(hora)
-    setHorarioSelecionado({ inicio: hora, fim: toStr(toMin(hora) + duracaoMin) })
-  }
-
-  function isConflito(slotHora: string): boolean {
-    const slotStart = toMin(slotHora)
-    const slotEnd   = slotStart + duracaoMin
-    return ocupacoes.some((occ) => {
-      const occStart = toMin(occ.inicio)
-      const occEnd   = toMin(occ.fim)
-      return slotStart < occEnd && occStart < slotEnd
-    })
-  }
-
-  function confirmarReserva() {
-    if (!horarioSelecionado) return
-    setErro("")
-
-    if (isConflito(horarioSelecionado.inicio)) {
-      setErro("Este horário já está ocupado. Escolha outro.")
-      return
+  function toggleSlot(slot: string) {
+    if (slotAberto === slot) {
+      setSlotAberto(null)
+      setDuracaoSel(null)
+    } else {
+      setSlotAberto(slot)
+      setDuracaoSel(null)
+      setSucesso(null)
     }
+  }
 
-    // Envia data e hora separados — o servidor interpreta como BRT (sem depender do fuso do navegador)
-    const dataStr = [
-      dataAtual.getFullYear(),
-      String(dataAtual.getMonth() + 1).padStart(2, "0"),
-      String(dataAtual.getDate()).padStart(2, "0"),
-    ].join("-")
+  function confirmar() {
+    if (!slotAberto || !duracaoSel) return
+    const fim      = adicionarMin(slotAberto, duracaoSel)
+    const conflitos = conflitosNoPeriodo(slotAberto, fim, ocupacoes)
+    if (conflitos.length > 0) return
 
     startTransition(async () => {
       try {
         await criarReserva({
           clienteId,
           quadraId,
-          data:       dataStr,
-          horaInicio: horarioSelecionado.inicio,
-          horaFim:    horarioSelecionado.fim,
-          observacao: observacao.trim() || null,
+          data:       dateStr,
+          horaInicio: slotAberto,
+          horaFim:    fim,
+          observacao: null,
         })
-        setConfirmado(true)
-        // Re-fetch ocupações para refletir o novo agendamento na timeline
-        const ocp = await buscarOcupacoes(quadraId, dataStr)
-        setOcupacoes(ocp)
+        setSucesso(`Reserva das ${slotAberto} às ${fim} enviada! Aguardando confirmação.`)
+        setSlotAberto(null)
+        setDuracaoSel(null)
+        buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
       } catch {
-        setErro("Erro ao salvar reserva. Tente novamente.")
+        setSucesso(null)
       }
     })
   }
 
+  const labelData = isToday(date)
+    ? "Hoje"
+    : format(date, "EEE, dd/MM", { locale: ptBR })
+
   return (
-    <div className="space-y-6">
-      {/* Seletor de duração */}
-      <div className="bg-card border border-border rounded-2xl p-5">
-        <p className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-primary" />
-          Qual duração você deseja?
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {DURACOES.map((d) => (
-            <button
-              key={d.min}
-              onClick={() => setDuracaoMin(d.min)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                duracaoMin === d.min
-                  ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20"
-                  : "bg-secondary text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
+    <div className="space-y-4">
+
+      {/* ── Navegação de data ── */}
+      <div className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3">
+        <Button
+          variant="ghost" size="icon"
+          onClick={() => setDate((d) => subDays(d, 1))}
+          disabled={isToday(date)}
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
+        <div className="text-center">
+          <p className="font-semibold text-foreground capitalize">{labelData}</p>
+          <p className="text-xs text-muted-foreground">{format(date, "dd 'de' MMMM", { locale: ptBR })}</p>
         </div>
-        <p className="text-xs text-muted-foreground mt-3">
-          Mostrando disponibilidade para{" "}
-          <span className="text-primary font-semibold">
-            {DURACOES.find((d) => d.min === duracaoMin)?.label}
+        <Button variant="ghost" size="icon" onClick={() => setDate((d) => addDays(d, 1))}>
+          <ChevronRight className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* ── Feedback de sucesso ── */}
+      {sucesso && (
+        <div className="flex items-center gap-2 text-sm text-primary bg-primary/10 border border-primary/20 rounded-xl px-4 py-3">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          {sucesso}
+        </div>
+      )}
+
+      {/* ── Lista de slots ── */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <p className="text-sm font-semibold text-foreground">{quadraNome}</p>
+          <span className="text-xs text-muted-foreground">
+            {fmtMin(HOUR_START * 60)} – {fmtMin(HOUR_END * 60)}
           </span>
-        </p>
-      </div>
-
-      {/* Navegação de dias */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <button
-            onClick={() => setOffset((o) => Math.max(0, o - 1))}
-            disabled={offset === 0}
-            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <div className="flex gap-2 flex-1 overflow-x-auto pb-1">
-            {dias.map((d, i) => {
-              const isAtivo = d.toDateString() === dataAtual.toDateString()
-              return (
-                <button
-                  key={i}
-                  onClick={() => setOffset(i)}
-                  className={`flex-shrink-0 flex flex-col items-center gap-0.5 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                    isAtivo
-                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                      : "border-border text-muted-foreground bg-card hover:border-primary/40 hover:text-foreground"
-                  }`}
-                >
-                  <span className="text-[10px] uppercase font-semibold opacity-70">
-                    {i === 0 ? "Hoje" : DIAS_SEMANA[d.getDay()]}
-                  </span>
-                  <span className="text-lg font-bold leading-none">{d.getDate()}</span>
-                </button>
-              )
-            })}
-          </div>
-          <button
-            onClick={() => setOffset((o) => Math.min(6, o + 1))}
-            disabled={offset === 6}
-            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground capitalize">{formatData(dataAtual)}</p>
-      </div>
-
-      {/* Timeline */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-          <p className="font-semibold text-sm">{quadraNome}</p>
-          <span className="text-xs text-muted-foreground">08:00 – 23:00</span>
         </div>
 
         <div className="divide-y divide-border">
-          {carregando ? (
-            <div className="px-5 py-8 text-center text-muted-foreground text-sm animate-pulse">
-              Verificando disponibilidade...
-            </div>
-          ) : timeline.length === 0 ? (
-            <div className="px-5 py-8 text-center text-muted-foreground text-sm">
-              Nenhum horário encontrado para este dia.
-            </div>
-          ) : null}
-          {!carregando && timeline.map((bloco) => {
-            if (bloco.tipo === "ocupado") {
-              return (
-                <div key={bloco.inicio} className="flex items-center gap-4 px-5 py-4 bg-destructive/5">
-                  <div className="w-1 h-9 rounded-full shrink-0 bg-destructive/60" />
-                  <div className="flex items-center gap-1.5 font-mono font-bold text-base min-w-[150px]">
-                    <span>{bloco.inicio}</span>
-                    <span className="text-muted-foreground font-normal text-sm">→</span>
-                    <span>{bloco.fim}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <Lock className="w-3.5 h-3.5 text-destructive/70" />
-                    <span className="text-sm font-semibold text-destructive/80">Ocupado</span>
-                  </div>
-                </div>
-              )
-            }
-
-            const cabe = bloco.duracaoMin >= duracaoMin
+          {slots.map((slot) => {
+            const ocupado = slotEstaOcupado(slot, ocupacoes)
+            const aberto  = slotAberto === slot
 
             return (
-              <div
-                key={bloco.inicio}
-                className={`flex items-center gap-4 px-5 py-4 transition-colors ${
-                  cabe ? "hover:bg-primary/5" : "opacity-40"
-                }`}
-              >
-                <div className={`w-1 h-9 rounded-full shrink-0 ${cabe ? "bg-primary/70" : "bg-muted-foreground/30"}`} />
-                <div className="flex flex-col min-w-[150px]">
-                  <div className="flex items-center gap-1.5 font-mono font-bold text-base">
-                    <span>{bloco.inicio}</span>
-                    <span className="text-muted-foreground font-normal text-sm">→</span>
-                    <span>{bloco.fim}</span>
+              <div key={slot} className={aberto ? "bg-primary/5" : ""}>
+
+                {/* Linha principal do slot */}
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex items-center gap-1.5 w-16 shrink-0">
+                    <Clock className={`w-3.5 h-3.5 ${ocupado ? "text-muted-foreground/50" : "text-primary"}`} />
+                    <span className={`text-sm font-mono font-bold ${ocupado ? "text-muted-foreground" : "text-foreground"}`}>
+                      {slot}
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground mt-0.5">{formatDuracao(bloco.duracaoMin)}</span>
-                </div>
-                <div className="flex-1">
-                  {cabe ? (
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-semibold text-primary">Disponível</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <XCircle className="w-4 h-4 text-muted-foreground/50" />
-                      <span className="text-sm text-muted-foreground">Janela pequena demais</span>
-                    </div>
+
+                  <div className="flex-1">
+                    {ocupado ? (
+                      <Badge variant="outline" className="border-red-500/30 text-red-400/80 text-xs gap-1 py-0">
+                        <Lock className="w-3 h-3" />
+                        Ocupado
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-primary/30 text-primary text-xs py-0">
+                        Disponível
+                      </Badge>
+                    )}
+                  </div>
+
+                  {!ocupado && (
+                    <Button
+                      size="sm"
+                      variant={aberto ? "default" : "outline"}
+                      className="shrink-0 text-xs h-8 px-3"
+                      onClick={() => toggleSlot(slot)}
+                    >
+                      {aberto ? "Fechar" : "Reservar"}
+                    </Button>
                   )}
                 </div>
-                {cabe && (
-                  <Button size="sm" className="shrink-0" onClick={() => abrirModal(bloco.inicio)}>
-                    Reservar
-                  </Button>
+
+                {/* ── Painel inline de reserva ── */}
+                {aberto && (
+                  <div className="px-4 pb-4 space-y-3 border-t border-border/50">
+                    <p className="text-xs text-muted-foreground pt-3 font-medium uppercase tracking-wider">
+                      Início: <span className="text-primary font-bold text-sm normal-case">{slot}</span>
+                      {" "}— escolha a duração:
+                    </p>
+
+                    {/* Pills de duração */}
+                    <div className="flex gap-2">
+                      {DURACOES.map(({ min, label }) => {
+                        const fim      = adicionarMin(slot, min)
+                        const passaFim = toMin(fim) > HOUR_END * 60
+                        const conflitos = conflitosNoPeriodo(slot, fim, ocupacoes)
+                        const invalido  = passaFim || conflitos.length > 0
+                        const selecionado = duracaoSel === min
+
+                        return (
+                          <button
+                            key={min}
+                            type="button"
+                            onClick={() => setDuracaoSel(min)}
+                            className={`flex-1 py-2.5 px-2 rounded-xl border-2 transition-all text-center ${
+                              selecionado
+                                ? invalido
+                                  ? "border-destructive bg-destructive/10 text-destructive"
+                                  : "border-primary bg-primary/10 text-primary"
+                                : invalido
+                                  ? "border-border/40 bg-secondary/20 text-muted-foreground/40 line-through cursor-not-allowed"
+                                  : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                            }`}
+                          >
+                            <span className="text-sm font-semibold block">{label}</span>
+                            {!invalido && (
+                              <span className="text-[10px] opacity-60 block">até {fim}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Mensagem de erro por duração */}
+                    {duracaoSel && (() => {
+                      const fim      = adicionarMin(slot, duracaoSel)
+                      const conflitos = conflitosNoPeriodo(slot, fim, ocupacoes)
+                      const passaFim  = toMin(fim) > HOUR_END * 60
+
+                      if (passaFim) {
+                        return (
+                          <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            Esse horário ultrapassa o fechamento às {HOUR_END}:00.
+                          </div>
+                        )
+                      }
+
+                      if (conflitos.length > 0) {
+                        return (
+                          <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              Não disponível — já existe agendamento das{" "}
+                              {conflitos.map((c) => `${c.inicio} às ${c.fim}`).join(" e ")}.
+                            </span>
+                          </div>
+                        )
+                      }
+
+                      return null
+                    })()}
+
+                    {/* Botões de ação */}
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 border-border"
+                        onClick={() => toggleSlot(slot)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        disabled={
+                          !duracaoSel ||
+                          isPending ||
+                          (() => {
+                            if (!duracaoSel) return true
+                            const fim = adicionarMin(slot, duracaoSel)
+                            return conflitosNoPeriodo(slot, fim, ocupacoes).length > 0 ||
+                                   toMin(fim) > HOUR_END * 60
+                          })()
+                        }
+                        onClick={confirmar}
+                      >
+                        {isPending ? "Enviando…" : "Confirmar reserva"}
+                      </Button>
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground/60 text-center">
+                      A reserva ficará pendente até ser confirmada pelo administrador.
+                    </p>
+                  </div>
                 )}
               </div>
             )
           })}
         </div>
       </div>
-
-      {/* Modal de reserva */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-card border-border sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">
-              {confirmado ? "Reserva enviada!" : "Escolher horário"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {confirmado ? (
-            <div className="flex flex-col items-center py-6 gap-4 text-center">
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-lg">Pedido de reserva enviado!</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Aguarde a confirmação do administrador. Você será notificado em breve.
-                </p>
-              </div>
-              <div className="bg-secondary rounded-xl px-5 py-3 text-sm w-full text-left space-y-1">
-                <p><span className="text-muted-foreground">Data:</span> <span className="font-medium capitalize">{formatData(dataAtual)}</span></p>
-                <p><span className="text-muted-foreground">Horário:</span> <span className="font-medium font-mono">{horarioSelecionado?.inicio} → {horarioSelecionado?.fim}</span></p>
-                <p><span className="text-muted-foreground">Duração:</span> <span className="font-medium">{DURACOES.find(d => d.min === duracaoMin)?.label}</span></p>
-              </div>
-              <Button className="w-full" onClick={() => setModalOpen(false)}>Fechar</Button>
-            </div>
-          ) : (
-            <div className="space-y-4 pt-1">
-              {/* Informações fixas */}
-              <div className="bg-secondary rounded-xl p-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <CalendarDays className="w-4 h-4 text-primary shrink-0" />
-                  <span className="text-muted-foreground">Data:</span>
-                  <span className="font-medium capitalize">{formatData(dataAtual)}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock className="w-4 h-4 text-primary shrink-0" />
-                  <span className="text-muted-foreground">Duração:</span>
-                  <span className="font-medium">{DURACOES.find(d => d.min === duracaoMin)?.label}</span>
-                </div>
-              </div>
-
-              {/* Seletor de horário */}
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Horário de início</Label>
-                  <select
-                    value={inicioSelecionado}
-                    onChange={(e) => handleInicioChange(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-secondary text-foreground px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary transition-colors cursor-pointer"
-                  >
-                    {Array.from({ length: 30 }, (_, i) => toStr(8 * 60 + i * 30))
-                      .filter((s) => toMin(s) + duracaoMin <= 23 * 60)
-                      .map((slot) => {
-                        const ocupado = isConflito(slot)
-                        return (
-                          <option
-                            key={slot}
-                            value={slot}
-                            disabled={ocupado}
-                            style={{ background: "hsl(var(--card))", color: ocupado ? "gray" : "inherit" }}
-                          >
-                            {slot}{ocupado ? "  —  ocupado" : ""}
-                          </option>
-                        )
-                      })}
-                  </select>
-                </div>
-
-                {horarioSelecionado && (
-                  <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl px-4 py-3">
-                    <Clock className="w-4 h-4 text-primary shrink-0" />
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xl">{horarioSelecionado.inicio}</span>
-                      <span className="text-muted-foreground text-sm">→</span>
-                      <span className="font-mono font-bold text-xl">{horarioSelecionado.fim}</span>
-                      <span className="text-xs text-muted-foreground ml-1">
-                        ({DURACOES.find((d) => d.min === duracaoMin)?.label})
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Observação */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Observação (opcional)</Label>
-                <Input
-                  placeholder="Ex: vou levar bola, somos 10 pessoas..."
-                  value={observacao}
-                  onChange={(e) => setObservacao(e.target.value)}
-                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                />
-              </div>
-
-              {erro && (
-                <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg border border-destructive/20">
-                  {erro}
-                </p>
-              )}
-
-              <p className="text-xs text-muted-foreground">
-                Ao confirmar, sua reserva ficará com status <span className="text-yellow-400 font-medium">Pendente</span> até ser aprovada pelo administrador.
-              </p>
-
-              <div className="flex gap-2 pt-1">
-                <Button variant="outline" className="flex-1 border-border" disabled={isPending} onClick={() => setModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button className="flex-1" disabled={isPending} onClick={confirmarReserva}>
-                  {isPending ? "Salvando..." : "Confirmar reserva"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

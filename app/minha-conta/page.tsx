@@ -153,16 +153,17 @@ export default async function MinhaContaPage() {
           </div>
         </div>
 
-        {/* Botão de novo agendamento */}
-        <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold">Quer jogar?</p>
-            <p className="text-sm text-muted-foreground">Reserve seu horário na quadra agora mesmo.</p>
-          </div>
-          <Button asChild>
-            <Link href="/minha-conta/horarios">Ver horários disponíveis</Link>
-          </Button>
-        </div>
+        {/* Reservar */}
+        <Link
+          href="/minha-conta/horarios"
+          className="block bg-primary/10 border border-primary/20 rounded-2xl p-6 hover:bg-primary/15 transition-colors"
+        >
+          <p className="font-semibold">Quer jogar?</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Veja os horários disponíveis e faça sua reserva.
+          </p>
+          <p className="text-sm text-primary font-medium mt-3">Ver horários →</p>
+        </Link>
 
         {/* Meus agendamentos */}
         <div>

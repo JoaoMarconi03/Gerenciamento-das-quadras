@@ -14,16 +14,8 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 
-const clientes = [
-  { id: "1", nome: "João Silva", telefone: "(62) 99999-0001", email: "joao@email.com", tipo: "Mensalista", fiado: 48 },
-  { id: "2", nome: "Pedro Santos", telefone: "(62) 99999-0002", email: "", tipo: "Avulso", fiado: 0 },
-  { id: "3", nome: "Carlos Lima", telefone: "(62) 99999-0003", email: "", tipo: "Avulso", fiado: 0 },
-  { id: "4", nome: "Ana Oliveira", telefone: "(62) 99999-0004", email: "ana@email.com", tipo: "Avulso", fiado: 32 },
-  { id: "5", nome: "Marcos Torres", telefone: "(62) 99999-0005", email: "", tipo: "Mensalista", fiado: 105 },
-  { id: "6", nome: "Grupo Digão", telefone: "(62) 99999-0006", email: "", tipo: "Mensalista", fiado: 0 },
-]
-
 export default function ClientesPage() {
+  const [clientes] = useState<{ id: string; nome: string; telefone: string; email: string; tipo: string; fiado: number }[]>([])
   const [busca, setBusca] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState({ nome: "", telefone: "", email: "" })

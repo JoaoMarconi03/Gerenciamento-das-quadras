@@ -45,12 +45,17 @@ export default async function AgendamentosPage() {
     quadraNome:  p.quadra.nome,
   }))
 
+  const quadra = await db.quadra.findFirst({ where: { tenantId, ativa: true } })
+
   return (
     <div className="flex flex-col h-full">
       {pendentesSerializados.length > 0 && (
         <PendentesAgendamentos pendentes={pendentesSerializados} />
       )}
-      <CalendarioAgendamentos />
+      <CalendarioAgendamentos
+        quadraId={quadra?.id ?? ""}
+        quadraNome={quadra?.nome ?? "Quadra"}
+      />
     </div>
   )
 }

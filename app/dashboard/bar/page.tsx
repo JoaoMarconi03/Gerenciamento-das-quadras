@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Pencil, Package, ShoppingBag, Banknote, CreditCard, Smartphone, Trash2 } from "lucide-react"
+import { buscarProdutos, criarProduto, atualizarProduto } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -50,53 +51,6 @@ type Venda = {
   hora: string
 }
 
-// ─── mock data ───────────────────────────────────────────────────────────────
-
-const produtosIniciais: Produto[] = [
-  { id: "1", nome: "Água 500ml",       preco: 3,  categoria: "BEBIDA",   ativo: true },
-  { id: "2", nome: "Água 1L",          preco: 5,  categoria: "BEBIDA",   ativo: true },
-  { id: "3", nome: "Refrigerante Lata",preco: 8,  categoria: "BEBIDA",   ativo: true },
-  { id: "4", nome: "Cerveja 600ml",    preco: 15, categoria: "BEBIDA",   ativo: true },
-  { id: "5", nome: "Energético 473ml", preco: 18, categoria: "BEBIDA",   ativo: true },
-  { id: "6", nome: "Isotônico 500ml",  preco: 8,  categoria: "BEBIDA",   ativo: true },
-  { id: "7", nome: "Coxinha",          preco: 6,  categoria: "ALIMENTO", ativo: true },
-  { id: "8", nome: "Pão de Queijo",    preco: 4,  categoria: "ALIMENTO", ativo: true },
-]
-
-const vendasIniciais: Venda[] = [
-  {
-    id: "v1",
-    cliente: "Lucas",
-    itens: [
-      { produtoId: "1", nome: "Água 500ml",    preco: 3,  quantidade: 1 },
-      { produtoId: "7", nome: "Coxinha",        preco: 6,  quantidade: 1 },
-    ],
-    total: 9,
-    formaPagamento: "CARTAO",
-    hora: "09:42",
-  },
-  {
-    id: "v2",
-    cliente: "Marcos",
-    itens: [
-      { produtoId: "4", nome: "Cerveja 600ml", preco: 15, quantidade: 2 },
-      { produtoId: "3", nome: "Refrigerante Lata", preco: 8, quantidade: 1 },
-    ],
-    total: 38,
-    formaPagamento: "PIX",
-    hora: "10:15",
-  },
-  {
-    id: "v3",
-    cliente: "",
-    itens: [
-      { produtoId: "5", nome: "Energético 473ml", preco: 18, quantidade: 1 },
-    ],
-    total: 18,
-    formaPagamento: "DINHEIRO",
-    hora: "11:05",
-  },
-]
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -125,13 +79,18 @@ function horaAgora() {
 
 export default function BarPage() {
   // produtos
-  const [produtos, setProdutos] = useState<Produto[]>(produtosIniciais)
+  const [produtos, setProdutos] = useState<Produto[]>([])
   const [dialogProduto, setDialogProduto] = useState(false)
   const [editando, setEditando] = useState<Produto | null>(null)
   const [formProd, setFormProd] = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"] })
+  const [salvandoProduto, setSalvandoProduto] = useState(false)
+
+  useEffect(() => {
+    buscarProdutos().then(setProdutos)
+  }, [])
 
   // vendas
-  const [vendas, setVendas] = useState<Venda[]>(vendasIniciais)
+  const [vendas, setVendas] = useState<Venda[]>([])
   const [dialogVenda, setDialogVenda] = useState(false)
   const [editandoVenda, setEditandoVenda] = useState<Venda | null>(null)
   const [formVenda, setFormVenda] = useState({
@@ -160,18 +119,21 @@ export default function BarPage() {
     setDialogProduto(true)
   }
 
-  function salvarProduto() {
+  async function salvarProduto() {
     if (!formProd.nome || !formProd.preco) return
+    setSalvandoProduto(true)
+    const preco = parseFloat(formProd.preco)
     if (editando) {
+      await atualizarProduto(editando.id, { nome: formProd.nome, preco, categoria: formProd.categoria })
       setProdutos((prev) => prev.map((p) => p.id === editando.id
-        ? { ...p, nome: formProd.nome, preco: parseFloat(formProd.preco), categoria: formProd.categoria }
+        ? { ...p, nome: formProd.nome, preco, categoria: formProd.categoria }
         : p))
     } else {
-      setProdutos((prev) => [...prev, {
-        id: String(Date.now()), nome: formProd.nome,
-        preco: parseFloat(formProd.preco), categoria: formProd.categoria, ativo: true,
-      }])
+      await criarProduto({ nome: formProd.nome, preco, categoria: formProd.categoria })
+      const lista = await buscarProdutos()
+      setProdutos(lista)
     }
+    setSalvandoProduto(false)
     setDialogProduto(false)
   }
 
@@ -601,8 +563,8 @@ export default function BarPage() {
               <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogProduto(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" onClick={salvarProduto} disabled={!formProd.nome || !formProd.preco}>
-                Salvar
+              <Button className="flex-1" onClick={salvarProduto} disabled={!formProd.nome || !formProd.preco || salvandoProduto}>
+                {salvandoProduto ? "Salvando..." : "Salvar"}
               </Button>
             </div>
           </div>

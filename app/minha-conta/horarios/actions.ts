@@ -3,19 +3,40 @@
 import { db } from "@/lib/db"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
+import { enviarMensagemWhatsApp } from "@/lib/whatsapp"
+
+export async function buscarOcupacoes(
+  quadraId: string,
+  dataStr: string // "YYYY-MM-DD"
+): Promise<{ inicio: string; fim: string }[]> {
+  const session = await auth()
+  if (!session?.user) return []
+
+  const rows = await db.$queryRaw<Array<{ inicio: string; fim: string }>>`
+    SELECT
+      TO_CHAR(inicio, 'HH24:MI') AS inicio,
+      TO_CHAR(fim,    'HH24:MI') AS fim
+    FROM "Agendamento"
+    WHERE "quadraId" = ${quadraId}
+      AND status IN ('CONFIRMADO'::"StatusAgendamento", 'PENDENTE'::"StatusAgendamento")
+      AND TO_CHAR(inicio, 'YYYY-MM-DD') = ${dataStr}
+    ORDER BY inicio ASC
+  `
+
+  return rows
+}
 
 export async function criarReserva(dados: {
   clienteId:  string
   quadraId:   string
-  data:       string // "YYYY-MM-DD"
-  horaInicio: string // "HH:MM"
-  horaFim:    string // "HH:MM"
+  data:       string
+  horaInicio: string
+  horaFim:    string
   observacao: string | null
 }) {
   const session = await auth()
   if (!session?.user) throw new Error("Não autorizado")
 
-  // Usa SQL puro com ::timestamp para evitar qualquer conversão de timezone pelo Prisma/Neon
   const inicioStr = `${dados.data} ${dados.horaInicio}:00`
   const fimStr    = `${dados.data} ${dados.horaFim}:00`
 
@@ -36,27 +57,21 @@ export async function criarReserva(dados: {
 
   revalidatePath("/minha-conta")
   revalidatePath("/minha-conta/horarios")
-}
 
-export async function buscarOcupacoes(
-  quadraId: string,
-  dataStr: string // "YYYY-MM-DD"
-): Promise<{ inicio: string; fim: string }[]> {
-  const session = await auth()
-  if (!session?.user) return []
-
-  // TO_CHAR lê o valor literal do banco sem qualquer conversão de timezone
-  const rows = await db.$queryRaw<Array<{ inicio: string; fim: string }>>`
-    SELECT
-      TO_CHAR(inicio, 'HH24:MI') AS inicio,
-      TO_CHAR(fim,    'HH24:MI') AS fim
-    FROM "Agendamento"
-    WHERE "quadraId" = ${quadraId}
-      AND status IN ('CONFIRMADO'::"StatusAgendamento", 'PENDENTE'::"StatusAgendamento")
-      AND inicio >= ${dataStr + " 00:00:00"}::timestamp
-      AND fim    <= ${dataStr + " 23:59:59"}::timestamp
-    ORDER BY inicio ASC
-  `
-
-  return rows
+  const adminTel = process.env.ADMIN_WHATSAPP
+  if (adminTel) {
+    const [cliente, quadra] = await Promise.all([
+      db.cliente.findUnique({ where: { id: dados.clienteId }, select: { nome: true } }),
+      db.quadra.findUnique({ where: { id: dados.quadraId },   select: { nome: true } }),
+    ])
+    const [ano, mes, dia] = dados.data.split("-")
+    const mensagem =
+      `🏟️ *Novo agendamento pendente!*\n\n` +
+      `👤 Cliente: ${cliente?.nome ?? "Desconhecido"}\n` +
+      `📅 Data: ${dia}/${mes}/${ano}\n` +
+      `⏰ Horário: ${dados.horaInicio} – ${dados.horaFim}\n` +
+      `🏐 Quadra: ${quadra?.nome ?? "—"}\n\n` +
+      `Acesse o painel para aprovar ou recusar.`
+    await enviarMensagemWhatsApp(adminTel, mensagem).catch(() => {})
+  }
 }

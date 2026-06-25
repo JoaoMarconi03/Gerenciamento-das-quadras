@@ -23,56 +23,8 @@ type ContaFiado = {
   lancamentos: Lancamento[]
 }
 
-const MOCK_INICIAL: ContaFiado[] = [
-  {
-    id: "1",
-    cliente: "João Silva",
-    telefone: "(88) 99999-1111",
-    saldo: 48,
-    diaFechamento: 30,
-    lancamentos: [
-      { id: "l1", descricao: "Cerveja 600ml x2", valor: 30, data: "22/06" },
-      { id: "l2", descricao: "Água 500ml x3", valor: 9, data: "22/06" },
-      { id: "l3", descricao: "Refrigerante Lata", valor: 8, data: "21/06" },
-      { id: "l4", descricao: "Coxinha x1", valor: 6, data: "19/06" },
-    ],
-  },
-  {
-    id: "2",
-    cliente: "Ana Oliveira",
-    telefone: "(88) 99999-2222",
-    saldo: 32,
-    diaFechamento: 30,
-    lancamentos: [
-      { id: "l5", descricao: "Isotônico 500ml x2", valor: 16, data: "22/06" },
-      { id: "l6", descricao: "Energético 473ml", valor: 18, data: "20/06" },
-    ],
-  },
-  {
-    id: "3",
-    cliente: "Marcos Torres",
-    telefone: "(88) 99999-3333",
-    saldo: 105,
-    diaFechamento: 30,
-    lancamentos: [
-      { id: "l7", descricao: "Cerveja 600ml x5", valor: 75, data: "21/06" },
-      { id: "l8", descricao: "Refrigerante Lata x2", valor: 16, data: "20/06" },
-      { id: "l9", descricao: "Pão de Queijo x2", valor: 8, data: "20/06" },
-      { id: "l10", descricao: "Água 1L", valor: 5, data: "19/06" },
-    ],
-  },
-  {
-    id: "4",
-    cliente: "Pedro Santos",
-    telefone: "(88) 99999-4444",
-    saldo: 0,
-    diaFechamento: 30,
-    lancamentos: [],
-  },
-]
-
 export default function FiadoPage() {
-  const [contas, setContas] = useState<ContaFiado[]>(MOCK_INICIAL)
+  const [contas, setContas] = useState<ContaFiado[]>([])
   const [contaSelecionada, setContaSelecionada] = useState<ContaFiado | null>(null)
 
   // Dialogs

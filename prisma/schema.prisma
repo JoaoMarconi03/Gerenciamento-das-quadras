@@ -114,13 +114,19 @@ enum StatusAssinatura {
 // ─────────────────────────────────────────────
 
 model Quadra {
-  id           String        @id @default(cuid())
-  nome         String
-  descricao    String?
-  tenantId     String
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  agendamentos Agendamento[]
-  ativa        Boolean       @default(true)
+  id                String        @id @default(cuid())
+  nome              String
+  descricao         String?
+  tenantId          String
+  tenant            Tenant        @relation(fields: [tenantId], references: [id])
+  agendamentos      Agendamento[]
+  ativa             Boolean       @default(true)
+  horaAbertura      String        @default("08:00")
+  horaFechamento    String        @default("23:00")
+  diasFuncionamento String        @default("SEG,TER,QUA,QUI,SEX,SAB,DOM")
+  valor1h           Decimal?      @db.Decimal(10, 2)
+  valor1h30         Decimal?      @db.Decimal(10, 2)
+  valor2h           Decimal?      @db.Decimal(10, 2)
 }
 
 model Agendamento {
