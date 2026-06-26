@@ -100,22 +100,35 @@ export async function criarVenda(data: {
   itens: ItemInput[]
 }) {
   const tenantId = await getTenantId()
-  await db.venda.create({
-    data: {
-      tenantId,
-      cliente: data.cliente || null,
-      formaPagamento: data.formaPagamento,
-      total: data.total,
-      itens: {
-        create: data.itens.map((i) => ({
-          produtoId: i.produtoId,
-          nome: i.nome,
-          preco: i.preco,
-          quantidade: i.quantidade,
-        })),
-      },
-    },
-  })
+
+  const rows = await db.$queryRaw<[{ id: string }]>`
+    INSERT INTO "Venda" (id, "tenantId", cliente, "formaPagamento", total, "criadoEm")
+    VALUES (
+      gen_random_uuid(),
+      ${tenantId},
+      ${data.cliente || null},
+      ${data.formaPagamento}::"FormaPagamento",
+      ${data.total},
+      NOW()
+    )
+    RETURNING id
+  `
+  const vendaId = rows[0].id
+
+  for (const item of data.itens) {
+    await db.$executeRaw`
+      INSERT INTO "ItemVenda" (id, "vendaId", "produtoId", nome, preco, quantidade)
+      VALUES (
+        gen_random_uuid(),
+        ${vendaId},
+        ${item.produtoId},
+        ${item.nome},
+        ${item.preco},
+        ${item.quantidade}
+      )
+    `
+  }
+
   revalidatePath("/dashboard/bar")
   revalidatePath("/dashboard")
 }
@@ -125,30 +138,39 @@ export async function atualizarVenda(
   data: { cliente: string; formaPagamento: "DINHEIRO" | "PIX" | "CARTAO"; total: number; itens: ItemInput[] }
 ) {
   await getTenantId()
-  await db.itemVenda.deleteMany({ where: { vendaId: id } })
-  await db.venda.update({
-    where: { id },
-    data: {
-      cliente: data.cliente || null,
-      formaPagamento: data.formaPagamento,
-      total: data.total,
-      itens: {
-        create: data.itens.map((i) => ({
-          produtoId: i.produtoId,
-          nome: i.nome,
-          preco: i.preco,
-          quantidade: i.quantidade,
-        })),
-      },
-    },
-  })
+
+  await db.$executeRaw`
+    DELETE FROM "ItemVenda" WHERE "vendaId" = ${id}
+  `
+  await db.$executeRaw`
+    UPDATE "Venda"
+    SET cliente = ${data.cliente || null},
+        "formaPagamento" = ${data.formaPagamento}::"FormaPagamento",
+        total = ${data.total}
+    WHERE id = ${id}
+  `
+  for (const item of data.itens) {
+    await db.$executeRaw`
+      INSERT INTO "ItemVenda" (id, "vendaId", "produtoId", nome, preco, quantidade)
+      VALUES (
+        gen_random_uuid(),
+        ${id},
+        ${item.produtoId},
+        ${item.nome},
+        ${item.preco},
+        ${item.quantidade}
+      )
+    `
+  }
+
   revalidatePath("/dashboard/bar")
   revalidatePath("/dashboard")
 }
 
 export async function excluirVenda(id: string) {
   await getTenantId()
-  await db.venda.delete({ where: { id } })
+  await db.$executeRaw`DELETE FROM "ItemVenda" WHERE "vendaId" = ${id}`
+  await db.$executeRaw`DELETE FROM "Venda" WHERE id = ${id}`
   revalidatePath("/dashboard/bar")
   revalidatePath("/dashboard")
 }
