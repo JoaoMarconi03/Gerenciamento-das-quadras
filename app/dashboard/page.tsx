@@ -9,34 +9,34 @@ export default async function DashboardPage() {
   const session = await auth()
   const tenantId = (session?.user as any)?.tenantId ?? ""
 
-  const hoje = new Date()
-  const dateKey = hoje.toISOString().slice(0, 10)
-  const inicioDia = new Date(`${dateKey}T00:00:00`)
-  const fimDia    = new Date(`${dateKey}T23:59:59`)
-
-  // Agendamentos de hoje (não cancelados)
-  const agendamentosHoje = await db.agendamento.findMany({
-    where: {
-      quadra: { tenantId },
-      inicio: { gte: inicioDia, lte: fimDia },
-      status: { not: "CANCELADO" },
-    },
-    include: { cliente: true },
-    orderBy: { inicio: "asc" },
-  })
-
-  // Horários brutos via SQL (sem conversão de timezone)
-  const agIds = agendamentosHoje.map((a) => a.id)
-  const horariosRaw = agIds.length > 0
-    ? await db.$queryRaw<Array<{ id: string; inicioHora: string; fimHora: string }>>`
-        SELECT id,
-          TO_CHAR(inicio, 'HH24:MI') AS "inicioHora",
-          TO_CHAR(fim,    'HH24:MI') AS "fimHora"
-        FROM "Agendamento"
-        WHERE id = ANY(${agIds})
-      `
-    : []
-  const horariosMap = Object.fromEntries(horariosRaw.map((h) => [h.id, h]))
+  // Agendamentos de hoje via raw SQL com TO_CHAR para evitar problema de timezone
+  const agendamentosHoje = await db.$queryRaw<Array<{
+    id: string
+    inicioHora: string
+    fimHora: string
+    status: string
+    tipo: string
+    valor: string | null
+    observacao: string | null
+    clienteNome: string | null
+  }>>`
+    SELECT
+      a.id,
+      TO_CHAR(a.inicio, 'HH24:MI')   AS "inicioHora",
+      TO_CHAR(a.fim,    'HH24:MI')   AS "fimHora",
+      a.status::text,
+      a.tipo::text,
+      a.valor::text,
+      a.observacao,
+      c.nome AS "clienteNome"
+    FROM "Agendamento" a
+    JOIN "Quadra" q ON q.id = a."quadraId"
+    LEFT JOIN "Cliente" c ON c.id = a."clienteId"
+    WHERE q."tenantId" = ${tenantId}
+      AND TO_CHAR(a.inicio, 'YYYY-MM-DD') = TO_CHAR(NOW(), 'YYYY-MM-DD')
+      AND a.status != 'CANCELADO'::"StatusAgendamento"
+    ORDER BY a.inicio ASC
+  `
 
   // Total de clientes
   const totalClientes = await db.cliente.count({ where: { tenantId } })
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   // Faturamento hoje: soma dos valores confirmados
   const faturamento = agendamentosHoje
     .filter((a) => a.status === "CONFIRMADO" && a.valor != null)
-    .reduce((sum, a) => sum + Number(a.valor), 0)
+    .reduce((sum, a) => sum + Number(a.valor ?? 0), 0)
 
   // Fiado pendente: soma de todos os lançamentos - pagamentos do tenant
   const [somaLanc, somaPag] = await Promise.all([
@@ -61,6 +61,7 @@ export default async function DashboardPage() {
     Number(somaLanc._sum.valor ?? 0) - Number(somaPag._sum.valor ?? 0)
   )
 
+  const hoje = new Date()
   const dataFormatada = hoje.toLocaleDateString("pt-BR", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   })
@@ -149,8 +150,7 @@ export default async function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {agendamentosHoje.map((ag) => {
-                const h = horariosMap[ag.id]
-                const nome = ag.cliente?.nome ?? ag.observacao ?? "Avulso"
+                const nome = ag.clienteNome ?? ag.observacao ?? "Avulso"
                 const tipo = ag.tipo === "MENSALISTA" ? "Mensalista" : "Avulso"
                 return (
                   <div
@@ -159,12 +159,12 @@ export default async function DashboardPage() {
                   >
                     <div className="flex items-center gap-1.5 text-primary shrink-0">
                       <Clock className="w-3.5 h-3.5" />
-                      <span className="text-sm font-semibold w-10">{h?.inicioHora ?? "—"}</span>
+                      <span className="text-sm font-semibold w-10">{ag.inicioHora}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{nome}</p>
                       <p className="text-xs text-muted-foreground">
-                        até {h?.fimHora ?? "—"}
+                        até {ag.fimHora}
                       </p>
                     </div>
                     <Badge
