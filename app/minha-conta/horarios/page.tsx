@@ -56,6 +56,9 @@ export default async function HorariosPage() {
           clienteId={cliente.id}
           quadraId={quadra.id}
           quadraNome={quadra.nome}
+          valor1h={quadra.valor1h ? Number(quadra.valor1h) : null}
+          valor1h30={quadra.valor1h30 ? Number(quadra.valor1h30) : null}
+          valor2h={quadra.valor2h ? Number(quadra.valor2h) : null}
         />
       </main>
     </div>

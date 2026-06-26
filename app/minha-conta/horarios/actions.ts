@@ -4,6 +4,8 @@ import { db } from "@/lib/db"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { enviarMensagemWhatsApp } from "@/lib/whatsapp"
+import { mp } from "@/lib/mercadopago"
+import { Preference } from "mercadopago"
 
 export async function buscarOcupacoes(
   quadraId: string,
@@ -24,6 +26,72 @@ export async function buscarOcupacoes(
   `
 
   return rows
+}
+
+export async function criarPreferenciaPagamento(dados: {
+  clienteId:  string
+  quadraId:   string
+  data:       string
+  horaInicio: string
+  horaFim:    string
+  duracaoMin: number
+}) {
+  const session = await auth()
+  if (!session?.user) throw new Error("Não autorizado")
+
+  const quadra = await db.quadra.findUnique({ where: { id: dados.quadraId } })
+  if (!quadra) throw new Error("Quadra não encontrada")
+
+  let valorTotal: number
+  if (dados.duracaoMin === 60)       valorTotal = Number(quadra.valor1h   ?? 0)
+  else if (dados.duracaoMin === 90)  valorTotal = Number(quadra.valor1h30 ?? 0)
+  else                               valorTotal = Number(quadra.valor2h   ?? 0)
+
+  if (valorTotal <= 0) throw new Error("Preço da quadra não configurado")
+
+  const valorEntrada = Math.round(valorTotal * 0.5 * 100) / 100
+
+  const [ano, mes, dia] = dados.data.split("-")
+  const titulo = `${quadra.nome} — ${dia}/${mes}/${ano} ${dados.horaInicio}–${dados.horaFim}`
+
+  const externalRef = JSON.stringify({
+    clienteId:  dados.clienteId,
+    quadraId:   dados.quadraId,
+    data:       dados.data,
+    horaInicio: dados.horaInicio,
+    horaFim:    dados.horaFim,
+    valorTotal,
+  })
+
+  const baseUrl = process.env.NEXT_PUBLIC_URL ?? ""
+  const preference = new Preference(mp)
+  const result = await preference.create({
+    body: {
+      items: [{
+        id:          dados.quadraId,
+        title:       titulo,
+        quantity:    1,
+        unit_price:  valorEntrada,
+        currency_id: "BRL",
+      }],
+      external_reference: externalRef,
+      back_urls: {
+        success: `${baseUrl}/minha-conta/horarios/sucesso`,
+        failure: `${baseUrl}/minha-conta/horarios/falha`,
+        pending: `${baseUrl}/minha-conta/horarios/sucesso`,
+      },
+      auto_return: "approved",
+      notification_url: `${baseUrl}/api/pagamento/webhook`,
+    },
+  })
+
+  if (!result.init_point) throw new Error("Erro ao criar preferência de pagamento")
+
+  return {
+    checkoutUrl: result.init_point,
+    valorTotal,
+    valorEntrada,
+  }
 }
 
 export async function criarReserva(dados: {

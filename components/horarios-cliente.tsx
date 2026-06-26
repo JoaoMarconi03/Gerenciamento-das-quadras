@@ -5,11 +5,11 @@ import { format, addDays, subDays, isToday } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import {
   ChevronLeft, ChevronRight, Clock, Lock,
-  CheckCircle2, AlertTriangle,
+  AlertTriangle, CreditCard,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { buscarOcupacoes, criarReserva } from "@/app/minha-conta/horarios/actions"
+import { buscarOcupacoes, criarPreferenciaPagamento } from "@/app/minha-conta/horarios/actions"
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -55,16 +55,22 @@ export function HorariosCliente({
   clienteId,
   quadraId,
   quadraNome,
+  valor1h,
+  valor1h30,
+  valor2h,
 }: {
   clienteId:  string
   quadraId:   string
   quadraNome: string
+  valor1h:    number | null
+  valor1h30:  number | null
+  valor2h:    number | null
 }) {
   const [date, setDate]             = useState(new Date())
   const [ocupacoes, setOcupacoes]   = useState<Ocupacao[]>([])
   const [slotAberto, setSlotAberto] = useState<string | null>(null)
   const [duracaoSel, setDuracaoSel] = useState<number | null>(null)
-  const [sucesso, setSucesso]       = useState<string | null>(null)
+  const [erro, setErro]             = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const dateStr = format(date, "yyyy-MM-dd")
@@ -72,7 +78,7 @@ export function HorariosCliente({
   useEffect(() => {
     setSlotAberto(null)
     setDuracaoSel(null)
-    setSucesso(null)
+    setErro(null)
     buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
   }, [dateStr, quadraId])
 
@@ -89,6 +95,12 @@ export function HorariosCliente({
     slots.push(fmtMin(min))
   }
 
+  function getValor(min: number): number | null {
+    if (min === 60)  return valor1h
+    if (min === 90)  return valor1h30
+    return valor2h
+  }
+
   function toggleSlot(slot: string) {
     if (slotAberto === slot) {
       setSlotAberto(null)
@@ -96,32 +108,30 @@ export function HorariosCliente({
     } else {
       setSlotAberto(slot)
       setDuracaoSel(null)
-      setSucesso(null)
+      setErro(null)
     }
   }
 
-  function confirmar() {
+  function irParaPagamento() {
     if (!slotAberto || !duracaoSel) return
     const fim      = adicionarMin(slotAberto, duracaoSel)
     const conflitos = conflitosNoPeriodo(slotAberto, fim, ocupacoes)
     if (conflitos.length > 0) return
 
+    setErro(null)
     startTransition(async () => {
       try {
-        await criarReserva({
+        const { checkoutUrl } = await criarPreferenciaPagamento({
           clienteId,
           quadraId,
           data:       dateStr,
           horaInicio: slotAberto,
           horaFim:    fim,
-          observacao: null,
+          duracaoMin: duracaoSel,
         })
-        setSucesso(`Reserva das ${slotAberto} às ${fim} enviada! Aguardando confirmação.`)
-        setSlotAberto(null)
-        setDuracaoSel(null)
-        buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
-      } catch {
-        setSucesso(null)
+        window.location.href = checkoutUrl
+      } catch (e: any) {
+        setErro(e?.message ?? "Erro ao iniciar pagamento.")
       }
     })
   }
@@ -151,11 +161,11 @@ export function HorariosCliente({
         </Button>
       </div>
 
-      {/* ── Feedback de sucesso ── */}
-      {sucesso && (
-        <div className="flex items-center gap-2 text-sm text-primary bg-primary/10 border border-primary/20 rounded-xl px-4 py-3">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          {sucesso}
+      {/* ── Feedback de erro global ── */}
+      {erro && (
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {erro}
         </div>
       )}
 
@@ -281,6 +291,32 @@ export function HorariosCliente({
                       return null
                     })()}
 
+                    {/* Preview de preço */}
+                    {duracaoSel && (() => {
+                      const fim = adicionarMin(slot, duracaoSel)
+                      const invalido =
+                        toMin(fim) > HOUR_END * 60 ||
+                        conflitosNoPeriodo(slot, fim, ocupacoes).length > 0
+                      const valor = getValor(duracaoSel)
+                      if (invalido || !valor) return null
+                      return (
+                        <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2.5 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total da reserva</p>
+                            <p className="text-base font-bold text-foreground">
+                              R$ {valor.toFixed(2).replace(".", ",")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">Entrada (50%)</p>
+                            <p className="text-base font-bold text-primary">
+                              R$ {(valor * 0.5).toFixed(2).replace(".", ",")}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
                     {/* Botões de ação */}
                     <div className="flex gap-2 pt-1">
                       <Button
@@ -293,7 +329,7 @@ export function HorariosCliente({
                       </Button>
                       <Button
                         size="sm"
-                        className="flex-1"
+                        className="flex-1 gap-2"
                         disabled={
                           !duracaoSel ||
                           isPending ||
@@ -304,15 +340,12 @@ export function HorariosCliente({
                                    toMin(fim) > HOUR_END * 60
                           })()
                         }
-                        onClick={confirmar}
+                        onClick={irParaPagamento}
                       >
-                        {isPending ? "Enviando…" : "Confirmar reserva"}
+                        <CreditCard className="w-4 h-4" />
+                        {isPending ? "Aguarde…" : "Pagar e confirmar"}
                       </Button>
                     </div>
-
-                    <p className="text-[10px] text-muted-foreground/60 text-center">
-                      A reserva ficará pendente até ser confirmada pelo administrador.
-                    </p>
                   </div>
                 )}
               </div>
