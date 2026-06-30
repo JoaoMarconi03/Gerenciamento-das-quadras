@@ -114,9 +114,9 @@ function fmt(h: number, m: number) {
 // ── Cores de status ───────────────────────────────────────────────────────────
 
 const statusColor: Record<string, string> = {
-  CONFIRMADO: "bg-primary/20 border-primary/40 text-primary",
-  PENDENTE:   "bg-yellow-500/20 border-yellow-500/40 text-yellow-400",
-  CANCELADO:  "bg-red-500/20 border-red-500/40 text-red-400",
+  CONFIRMADO: "bg-primary/15 border-primary/40 text-primary",
+  PENDENTE:   "bg-yellow-400/20 border-yellow-500/40 text-yellow-700",
+  CANCELADO:  "bg-red-500/15 border-red-500/40 text-red-600",
 }
 
 // ── Componente ────────────────────────────────────────────────────────────────
@@ -350,7 +350,7 @@ export function CalendarioAgendamentos({
                     </div>
                   ) : (
                     <>
-                      <div className="bg-black/20 px-3 py-1.5 flex items-center justify-between gap-2">
+                      <div className="bg-black/8 px-3 py-1.5 flex items-center justify-between gap-2">
                         <span className="font-mono font-bold text-base leading-none tracking-wide">
                           {iniStr}<span className="opacity-50 mx-1.5 font-normal">→</span>{fimStr}
                         </span>

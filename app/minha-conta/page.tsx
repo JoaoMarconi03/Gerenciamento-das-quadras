@@ -10,7 +10,7 @@ import { AutoRefresh } from "@/components/auto-refresh"
 
 const STATUS_STYLES: Record<string, string> = {
   CONFIRMADO: "bg-primary/10 text-primary",
-  PENDENTE:   "bg-yellow-500/15 text-yellow-400",
+  PENDENTE:   "bg-yellow-500/15 text-yellow-600",
   CANCELADO:  "bg-destructive/15 text-destructive",
   CONCLUIDO:  "bg-muted text-muted-foreground",
 }
@@ -155,25 +155,13 @@ export default async function MinhaContaPage() {
           </div>
         </div>
 
-        {/* Reservar */}
-        <Link
-          href="/minha-conta/horarios"
-          className="block bg-primary/10 border border-primary/20 rounded-2xl p-6 hover:bg-primary/15 transition-colors"
-        >
-          <p className="font-semibold">Quer jogar?</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Veja os horários disponíveis e faça sua reserva.
-          </p>
-          <p className="text-sm text-primary font-medium mt-3">Ver horários →</p>
-        </Link>
-
         {/* Meus agendamentos */}
         <div>
           <h2 className="text-xl font-bold mb-4">Meus agendamentos</h2>
           <div className="space-y-3">
             {agendamentos.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
-                Nenhum agendamento ainda. Que tal reservar um horário?
+                Nenhum agendamento ainda. Entre em contato com a arena para agendar.
               </div>
             ) : (
               agendamentos.map((ag) => (

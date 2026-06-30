@@ -79,7 +79,7 @@ export default function ClientesPage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {c.fiado > 0 && (
-                    <span className="flex items-center gap-1 text-xs text-yellow-400 font-medium">
+                    <span className="flex items-center gap-1 text-xs text-yellow-600 font-medium">
                       <BookOpen className="w-3.5 h-3.5" />
                       R$ {c.fiado}
                     </span>

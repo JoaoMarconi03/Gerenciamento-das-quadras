@@ -134,7 +134,7 @@ export default function FiadoPage() {
           <h1 className="text-xl font-bold text-foreground">Fiado</h1>
           <p className="text-sm text-muted-foreground">
             Total pendente:{" "}
-            <span className="text-yellow-400 font-semibold">
+            <span className="text-yellow-600 font-semibold">
               R$ {totalPendente.toFixed(2).replace(".", ",")}
             </span>
           </p>
@@ -175,7 +175,7 @@ export default function FiadoPage() {
                     Quitado
                   </span>
                 ) : (
-                  <span className="text-base font-bold text-yellow-400">
+                  <span className="text-base font-bold text-yellow-600">
                     R$ {c.saldo.toFixed(2).replace(".", ",")}
                   </span>
                 )}
@@ -250,7 +250,7 @@ export default function FiadoPage() {
                     </p>
                   )}
                 </div>
-                <span className={contaSelecionada.saldo === 0 ? "text-primary text-base" : "text-yellow-400 text-lg"}>
+                <span className={contaSelecionada.saldo === 0 ? "text-primary text-base" : "text-yellow-600 text-lg"}>
                   {contaSelecionada.saldo === 0
                     ? "Quitado"
                     : `R$ ${contaSelecionada.saldo.toFixed(2).replace(".", ",")}`}

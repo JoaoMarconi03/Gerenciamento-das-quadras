@@ -90,8 +90,8 @@ export default async function DashboardPage() {
       value: fiadoPendente > 0 ? `R$ ${fiadoPendente.toFixed(2).replace(".", ",")}` : "R$ 0,00",
       sub: "em aberto",
       icon: BookOpen,
-      color: "text-yellow-400",
-      bg: "bg-yellow-400/10",
+      color: "text-yellow-600",
+      bg: "bg-yellow-500/10",
     },
   ]
 
@@ -207,7 +207,7 @@ export default async function DashboardPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-yellow-400" />
+                <BookOpen className="w-4 h-4 text-yellow-600" />
                 Fiado — Contas em Aberto
               </CardTitle>
               <a href="/dashboard/fiado" className="text-xs text-primary hover:underline">Ver todas</a>
@@ -215,7 +215,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="pt-0">
             {fiadoPendente > 0 ? (
-              <p className="text-sm text-yellow-400 font-semibold text-center py-6">
+              <p className="text-sm text-yellow-600 font-semibold text-center py-6">
                 R$ {fiadoPendente.toFixed(2).replace(".", ",")} em aberto
               </p>
             ) : (
