@@ -3,12 +3,15 @@
 import { db } from "@/lib/db"
 import { Resend } from "resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 export async function solicitarRedefinicao(
   email: string,
 ): Promise<{ ok: boolean; erro?: string }> {
   try {
+    if (!process.env.RESEND_API_KEY) {
+      return { ok: false, erro: "Serviço de e-mail não configurado. Entre em contato com o administrador." }
+    }
+    const resend = new Resend(process.env.RESEND_API_KEY)
+
     const usuario = await db.usuario.findUnique({ where: { email } })
 
     // Não revelamos se o e-mail existe ou não (segurança)
