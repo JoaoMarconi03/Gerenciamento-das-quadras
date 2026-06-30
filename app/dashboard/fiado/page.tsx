@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { Plus, ChevronRight, CheckCircle2, ShoppingCart, UserPlus, Trash2 } from "lucide-react"
+import { ChevronRight, CheckCircle2, ShoppingCart, UserPlus, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -25,6 +25,7 @@ import {
   lancarItem,
   registrarPagamento,
   buscarProdutosAtivos,
+  buscarClientesParaFiado,
 } from "./actions"
 
 type Lancamento = { id: string; descricao: string; valor: number; data: string }
@@ -37,6 +38,7 @@ type Conta = {
   lancamentos: Lancamento[]
 }
 type Produto = { id: string; nome: string; preco: number }
+type ClienteFiado = { id: string; nome: string; telefone: string | null; temConta: boolean }
 
 export default function FiadoPage() {
   const [contas, setContas]               = useState<Conta[]>([])
@@ -49,7 +51,12 @@ export default function FiadoPage() {
   const [dialogLancamento, setDialogLancamento] = useState(false)
   const [dialogPagamento, setDialogPagamento]   = useState(false)
 
-  // forms
+  // nova conta — modo e dados
+  const [modoNovaConta, setModoNovaConta]   = useState<"existente" | "novo">("existente")
+  const [clientesFiado, setClientesFiado]   = useState<ClienteFiado[]>([])
+  const [buscaCliente, setBuscaCliente]     = useState("")
+  const [clienteSel, setClienteSel]         = useState<ClienteFiado | null>(null)
+  const [erroNovaConta, setErroNovaConta]   = useState("")
   const [formNova, setFormNova] = useState({ nome: "", telefone: "", diaFechamento: "30" })
   const [formLanc, setFormLanc] = useState({ produtoId: "", quantidade: "1" })
   const [formPag,  setFormPag]  = useState({ valor: "", observacao: "" })
@@ -63,6 +70,16 @@ export default function FiadoPage() {
     recarregar()
     buscarProdutosAtivos().then(setProdutos)
   }, [])
+
+  function abrirDialogNovaConta() {
+    setModoNovaConta("existente")
+    setBuscaCliente("")
+    setClienteSel(null)
+    setErroNovaConta("")
+    setFormNova({ nome: "", telefone: "", diaFechamento: "30" })
+    buscarClientesParaFiado().then(setClientesFiado)
+    setDialogNovaConta(true)
+  }
 
   const totalPendente = contas.reduce((s, c) => s + c.saldo, 0)
 
@@ -78,15 +95,29 @@ export default function FiadoPage() {
   }
 
   function handleNovaConta() {
-    if (!formNova.nome.trim()) return
+    setErroNovaConta("")
+    const diaFechamento = Number(formNova.diaFechamento) || 30
+
+    if (modoNovaConta === "existente" && !clienteSel) {
+      setErroNovaConta("Selecione um cliente da lista.")
+      return
+    }
+    if (modoNovaConta === "novo" && !formNova.nome.trim()) {
+      setErroNovaConta("Nome é obrigatório.")
+      return
+    }
+
     startTransition(async () => {
-      await criarConta({
-        nome:          formNova.nome.trim(),
-        telefone:      formNova.telefone.trim(),
-        diaFechamento: Number(formNova.diaFechamento) || 30,
-      })
+      const resultado = await criarConta(
+        modoNovaConta === "existente"
+          ? { clienteId: clienteSel!.id, diaFechamento }
+          : { nome: formNova.nome.trim(), telefone: formNova.telefone.trim(), diaFechamento }
+      )
+      if (!resultado.ok) {
+        setErroNovaConta(resultado.erro ?? "Erro ao abrir conta.")
+        return
+      }
       await recarregar()
-      setFormNova({ nome: "", telefone: "", diaFechamento: "30" })
       setDialogNovaConta(false)
     })
   }
@@ -139,7 +170,7 @@ export default function FiadoPage() {
             </span>
           </p>
         </div>
-        <Button size="sm" onClick={() => setDialogNovaConta(true)} className="gap-2">
+        <Button size="sm" onClick={abrirDialogNovaConta} className="gap-2">
           <UserPlus className="w-4 h-4" />
           Nova conta
         </Button>
@@ -187,31 +218,131 @@ export default function FiadoPage() {
       </div>
 
       {/* ── Dialog: Nova Conta ── */}
-      <Dialog open={dialogNovaConta} onOpenChange={setDialogNovaConta}>
+      <Dialog open={dialogNovaConta} onOpenChange={(o) => { if (!isPending) setDialogNovaConta(o) }}>
         <DialogContent className="bg-card border-border sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-foreground">Abrir conta no fiado</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Nome *</Label>
-              <Input
-                placeholder="Nome do cliente"
-                value={formNova.nome}
-                onChange={(e) => setFormNova((f) => ({ ...f, nome: e.target.value }))}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-              />
+
+            {/* Toggle modo */}
+            <div className="flex rounded-lg bg-secondary p-1 gap-1">
+              <button
+                onClick={() => { setModoNovaConta("existente"); setErroNovaConta("") }}
+                className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-colors ${
+                  modoNovaConta === "existente"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Cliente cadastrado
+              </button>
+              <button
+                onClick={() => { setModoNovaConta("novo"); setErroNovaConta("") }}
+                className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-colors ${
+                  modoNovaConta === "novo"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Novo cliente
+              </button>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Telefone</Label>
-              <Input
-                type="tel"
-                placeholder="(00) 00000-0000"
-                value={formNova.telefone}
-                onChange={(e) => setFormNova((f) => ({ ...f, telefone: e.target.value }))}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
+
+            {/* Modo: cliente existente */}
+            {modoNovaConta === "existente" && (
+              <div className="space-y-2">
+                {clienteSel ? (
+                  <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{clienteSel.nome}</p>
+                      {clienteSel.telefone && (
+                        <p className="text-xs text-muted-foreground">{clienteSel.telefone}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setClienteSel(null); setBuscaCliente("") }}
+                      className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                      <Input
+                        placeholder="Buscar por nome ou telefone..."
+                        value={buscaCliente}
+                        onChange={(e) => setBuscaCliente(e.target.value)}
+                        className="bg-secondary border-border text-foreground placeholder:text-muted-foreground pl-9"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                      {clientesFiado.length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          Nenhum cliente cadastrado ainda.
+                        </p>
+                      )}
+                      {clientesFiado
+                        .filter((c) => {
+                          const q = buscaCliente.toLowerCase()
+                          return (
+                            !q ||
+                            c.nome.toLowerCase().includes(q) ||
+                            (c.telefone ?? "").includes(q)
+                          )
+                        })
+                        .map((c) => (
+                          <button
+                            key={c.id}
+                            disabled={c.temConta}
+                            onClick={() => setClienteSel(c)}
+                            className={`w-full text-left px-3 py-2.5 transition-colors ${
+                              c.temConta
+                                ? "opacity-40 cursor-not-allowed bg-secondary/30"
+                                : "hover:bg-secondary/60"
+                            }`}
+                          >
+                            <p className="text-sm font-medium text-foreground">{c.nome}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {c.telefone ?? "Sem telefone"}
+                              {c.temConta && " · já possui conta"}
+                            </p>
+                          </button>
+                        ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Modo: novo cliente */}
+            {modoNovaConta === "novo" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Nome *</Label>
+                  <Input
+                    placeholder="Nome do cliente"
+                    value={formNova.nome}
+                    onChange={(e) => setFormNova((f) => ({ ...f, nome: e.target.value }))}
+                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Telefone</Label>
+                  <Input
+                    type="tel"
+                    placeholder="(00) 00000-0000"
+                    value={formNova.telefone}
+                    onChange={(e) => setFormNova((f) => ({ ...f, telefone: e.target.value }))}
+                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Dia de fechamento (ambos os modos) */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Dia de fechamento</Label>
               <Input
@@ -224,11 +355,18 @@ export default function FiadoPage() {
                 className="bg-secondary border-border text-foreground"
               />
             </div>
+
+            {erroNovaConta && (
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                {erroNovaConta}
+              </p>
+            )}
+
             <div className="flex gap-2 pt-1">
               <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogNovaConta(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" onClick={handleNovaConta} disabled={!formNova.nome.trim() || isPending}>
+              <Button className="flex-1" onClick={handleNovaConta} disabled={isPending}>
                 {isPending ? "Salvando..." : "Abrir conta"}
               </Button>
             </div>

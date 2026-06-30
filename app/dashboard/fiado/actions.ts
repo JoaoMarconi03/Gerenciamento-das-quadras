@@ -42,19 +42,35 @@ export async function buscarContas() {
 }
 
 export async function criarConta(data: {
-  nome: string
-  telefone: string
+  clienteId?:    string
+  nome?:         string
+  telefone?:     string
   diaFechamento: number
-}) {
-  const tenantId = await getTenantId()
-  const cliente = await db.cliente.create({
-    data: { nome: data.nome, telefone: data.telefone || null, tenantId },
-  })
-  await db.contaFiado.create({
-    data: { clienteId: cliente.id, diaFechamento: data.diaFechamento },
-  })
-  revalidatePath("/dashboard/fiado")
-  revalidatePath("/dashboard")
+}): Promise<{ ok: boolean; erro?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    let clienteId = data.clienteId
+
+    if (clienteId) {
+      const jaTemConta = await db.contaFiado.findUnique({ where: { clienteId } })
+      if (jaTemConta) return { ok: false, erro: "Este cliente já possui uma conta no fiado." }
+    } else {
+      if (!data.nome?.trim()) return { ok: false, erro: "Nome é obrigatório." }
+      const novo = await db.cliente.create({
+        data: { nome: data.nome.trim(), telefone: data.telefone?.trim() || null, tenantId },
+      })
+      clienteId = novo.id
+    }
+
+    await db.contaFiado.create({
+      data: { clienteId: clienteId!, diaFechamento: data.diaFechamento },
+    })
+    revalidatePath("/dashboard/fiado")
+    revalidatePath("/dashboard")
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 export async function lancarItem(data: {
@@ -85,6 +101,21 @@ export async function registrarPagamento(data: {
   })
   revalidatePath("/dashboard/fiado")
   revalidatePath("/dashboard")
+}
+
+export async function buscarClientesParaFiado() {
+  const tenantId = await getTenantId()
+  const clientes = await db.cliente.findMany({
+    where: { tenantId },
+    select: { id: true, nome: true, telefone: true, conta: { select: { id: true } } },
+    orderBy: { nome: "asc" },
+  })
+  return clientes.map((c) => ({
+    id:       c.id,
+    nome:     c.nome,
+    telefone: c.telefone ?? null,
+    temConta: !!c.conta,
+  }))
 }
 
 export async function buscarProdutosAtivos() {
