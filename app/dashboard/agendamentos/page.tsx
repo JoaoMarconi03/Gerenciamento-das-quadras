@@ -48,6 +48,12 @@ export default async function AgendamentosPage() {
 
   const quadra = await db.quadra.findFirst({ where: { tenantId, ativa: true } })
 
+  const precos = {
+    valor1h:   quadra?.valor1h   ? Number(quadra.valor1h)   : undefined,
+    valor1h30: quadra?.valor1h30 ? Number(quadra.valor1h30) : undefined,
+    valor2h:   quadra?.valor2h   ? Number(quadra.valor2h)   : undefined,
+  }
+
   return (
     <div className="flex flex-col h-full">
       <AutoRefresh segundos={5} />
@@ -57,6 +63,7 @@ export default async function AgendamentosPage() {
       <CalendarioAgendamentos
         quadraId={quadra?.id ?? ""}
         quadraNome={quadra?.nome ?? "Quadra"}
+        precos={precos}
       />
     </div>
   )

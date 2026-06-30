@@ -13,12 +13,14 @@ import {
   Star,
   Settings,
   LogOut,
+  CircleDollarSign,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/agendamentos", label: "Agendamentos", icon: Calendar, exact: false },
+  { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CircleDollarSign, exact: false },
   { href: "/dashboard/clientes", label: "Clientes", icon: Users, exact: false },
   { href: "/dashboard/bar", label: "Bar", icon: ShoppingCart, exact: false },
   { href: "/dashboard/fiado", label: "Fiado", icon: BookOpen, exact: false },

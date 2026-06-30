@@ -1,20 +1,17 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
+import { useState, useEffect } from "react"
 import { format, addDays, subDays, isToday } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import {
   ChevronLeft, ChevronRight, Clock, Lock,
-  AlertTriangle, CreditCard,
+  AlertTriangle, MessageCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { buscarOcupacoes, criarPreferenciaPagamento } from "@/app/minha-conta/horarios/actions"
+import { buscarOcupacoes } from "@/app/minha-conta/horarios/actions"
 
 // ── Constantes ────────────────────────────────────────────────────────────────
-
-const HOUR_START = 8
-const HOUR_END   = 23
 
 const DURACOES = [
   { min: 60,  label: "1 hora"  },
@@ -25,6 +22,13 @@ const DURACOES = [
 type Ocupacao = { inicio: string; fim: string }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getHours(d: Date) {
+  const dow = d.getDay() // 0=Dom, 6=Sáb
+  return (dow === 0 || dow === 6)
+    ? { start: 8,  end: 19 }  // fim de semana: 08h–19h
+    : { start: 18, end: 24 }  // seg–sex: 18h–00h
+}
 
 function toMin(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number)
@@ -70,15 +74,14 @@ export function HorariosCliente({
   const [ocupacoes, setOcupacoes]   = useState<Ocupacao[]>([])
   const [slotAberto, setSlotAberto] = useState<string | null>(null)
   const [duracaoSel, setDuracaoSel] = useState<number | null>(null)
-  const [erro, setErro]             = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
 
   const dateStr = format(date, "yyyy-MM-dd")
+
+  const { start: HOUR_START, end: HOUR_END } = getHours(date)
 
   useEffect(() => {
     setSlotAberto(null)
     setDuracaoSel(null)
-    setErro(null)
     buscarOcupacoes(quadraId, dateStr).then(setOcupacoes)
   }, [dateStr, quadraId])
 
@@ -89,11 +92,14 @@ export function HorariosCliente({
     return () => clearInterval(id)
   }, [quadraId, dateStr])
 
-  // Gera slots de 30 em 30 min: 08:00, 08:30 … 22:30
+  // Gera slots de 30 em 30 min conforme o dia da semana
   const slots: string[] = []
   for (let min = HOUR_START * 60; min < HOUR_END * 60; min += 30) {
     slots.push(fmtMin(min))
   }
+
+  // "24:00" interno exibido como "00:00" no cabeçalho
+  const labelFim = HOUR_END === 24 ? "00:00" : fmtMin(HOUR_END * 60)
 
   function getValor(min: number): number | null {
     if (min === 60)  return valor1h
@@ -108,32 +114,21 @@ export function HorariosCliente({
     } else {
       setSlotAberto(slot)
       setDuracaoSel(null)
-      setErro(null)
     }
   }
 
-  function irParaPagamento() {
+  function irParaWhatsApp() {
     if (!slotAberto || !duracaoSel) return
     const fim      = adicionarMin(slotAberto, duracaoSel)
     const conflitos = conflitosNoPeriodo(slotAberto, fim, ocupacoes)
     if (conflitos.length > 0) return
 
-    setErro(null)
-    startTransition(async () => {
-      const result = await criarPreferenciaPagamento({
-        clienteId,
-        quadraId,
-        data:       dateStr,
-        horaInicio: slotAberto,
-        horaFim:    fim,
-        duracaoMin: duracaoSel,
-      })
-      if (!result.ok) {
-        setErro(result.erro ?? "Erro ao processar pagamento")
-        return
-      }
-      window.location.href = result.checkoutUrl
-    })
+    const dataFormatada = format(date, "dd/MM/yyyy")
+    const durLabel      = DURACOES.find((d) => d.min === duracaoSel)?.label ?? ""
+    const mensagem =
+      `Olá! Gostaria de reservar ${quadraNome} para o dia ${dataFormatada} das ${slotAberto} às ${fim} (${durLabel}). Poderia confirmar o horário?`
+
+    window.open(`https://wa.me/5515997740451?text=${encodeURIComponent(mensagem)}`, "_blank")
   }
 
   const labelData = isToday(date)
@@ -161,20 +156,12 @@ export function HorariosCliente({
         </Button>
       </div>
 
-      {/* ── Feedback de erro global ── */}
-      {erro && (
-        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          {erro}
-        </div>
-      )}
-
       {/* ── Lista de slots ── */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <p className="text-sm font-semibold text-foreground">{quadraNome}</p>
           <span className="text-xs text-muted-foreground">
-            {fmtMin(HOUR_START * 60)} – {fmtMin(HOUR_END * 60)}
+            {fmtMin(HOUR_START * 60)} – {labelFim}
           </span>
         </div>
 
@@ -329,10 +316,9 @@ export function HorariosCliente({
                       </Button>
                       <Button
                         size="sm"
-                        className="flex-1 gap-2"
+                        className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white"
                         disabled={
                           !duracaoSel ||
-                          isPending ||
                           (() => {
                             if (!duracaoSel) return true
                             const fim = adicionarMin(slot, duracaoSel)
@@ -340,10 +326,10 @@ export function HorariosCliente({
                                    toMin(fim) > HOUR_END * 60
                           })()
                         }
-                        onClick={irParaPagamento}
+                        onClick={irParaWhatsApp}
                       >
-                        <CreditCard className="w-4 h-4" />
-                        {isPending ? "Aguarde…" : "Pagar e confirmar"}
+                        <MessageCircle className="w-4 h-4" />
+                        Falar no WhatsApp
                       </Button>
                     </div>
                   </div>

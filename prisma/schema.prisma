@@ -131,18 +131,21 @@ model Quadra {
 }
 
 model Agendamento {
-  id         String            @id @default(cuid())
-  inicio     DateTime
-  fim        DateTime
-  status     StatusAgendamento @default(PENDENTE)
-  tipo       TipoAgendamento   @default(AVULSO)
-  valor      Decimal?          @db.Decimal(10, 2)
-  observacao String?
-  quadraId   String
-  clienteId  String?
-  quadra     Quadra            @relation(fields: [quadraId], references: [id])
-  cliente    Cliente?          @relation(fields: [clienteId], references: [id])
-  criadoEm   DateTime          @default(now())
+  id                    String            @id @default(cuid())
+  inicio                DateTime
+  fim                   DateTime
+  status                StatusAgendamento @default(PENDENTE)
+  tipo                  TipoAgendamento   @default(AVULSO)
+  valor                 Decimal?          @db.Decimal(10, 2)
+  observacao            String?
+  quadraId              String
+  clienteId             String?
+  quadra                Quadra            @relation(fields: [quadraId], references: [id])
+  cliente               Cliente?          @relation(fields: [clienteId], references: [id])
+  criadoEm              DateTime          @default(now())
+  pagamentoRegistrado   Boolean           @default(false)
+  pagamentoRegistradoEm DateTime?
+  formaPagamento        FormaPagamento?
 }
 
 enum StatusAgendamento {
@@ -150,6 +153,7 @@ enum StatusAgendamento {
   CONFIRMADO
   CANCELADO
   CONCLUIDO
+  PAGO
 }
 
 enum TipoAgendamento {

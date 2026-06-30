@@ -1,7 +1,7 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { Trophy, CalendarDays, Clock, User } from "lucide-react"
+import { Trophy, CalendarDays, Clock, User, CalendarPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SignOutButton } from "@/components/sign-out-button"
@@ -154,6 +154,21 @@ export default async function MinhaContaPage() {
             <p className="text-lg font-bold mt-0.5">Ativa</p>
           </div>
         </div>
+
+        {/* CTA — Reservar horário */}
+        <Link
+          href="/minha-conta/horarios"
+          className="flex items-center justify-between gap-4 bg-primary text-primary-foreground rounded-xl px-5 py-4 hover:bg-primary/90 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <CalendarPlus className="w-6 h-6 shrink-0" />
+            <div>
+              <p className="font-bold text-base leading-tight">Ver horários disponíveis</p>
+              <p className="text-xs opacity-75 mt-0.5">Escolha o dia e horário para reservar</p>
+            </div>
+          </div>
+          <span className="text-2xl opacity-70">›</span>
+        </Link>
 
         {/* Meus agendamentos */}
         <div>

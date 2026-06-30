@@ -8,7 +8,7 @@ import {
 import { ptBR } from "date-fns/locale"
 import {
   ChevronLeft, ChevronRight, Plus, CalendarDays, Lock,
-  Repeat2, AlertTriangle, CheckCircle2,
+  Repeat2, AlertTriangle, CheckCircle2, Pencil, Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -22,30 +22,43 @@ import {
   buscarAgendamentosPorData,
   criarAgendamentoAdmin,
   criarAgendamentosMensaisAdmin,
+  editarAgendamento,
+  excluirAgendamento,
 } from "@/app/dashboard/agendamentos/actions"
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-const SLOT_H     = 72
-const HOUR_START = 8
-const HOUR_END   = 23
-
-const slots = Array.from({ length: (HOUR_END - HOUR_START) * 2 }, (_, i) => {
-  const totalMin = HOUR_START * 60 + i * 30
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  return { label: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`, h, m }
-})
+const SLOT_H = 72
 
 const DIAS_SEMANA = ["Domingos", "Segundas-feiras", "Terças-feiras", "Quartas-feiras", "Quintas-feiras", "Sextas-feiras", "Sábados"]
 
-// Slots de FIM incluem 23:00 (um a mais que os de início)
-const slotsFim = Array.from({ length: (HOUR_END - HOUR_START) * 2 + 1 }, (_, i) => {
-  const totalMin = HOUR_START * 60 + i * 30
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  return { label: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`, h, m }
-})
+// Retorna horários de funcionamento baseado no dia da semana
+function getHours(d: Date) {
+  const dow = d.getDay() // 0=Dom, 6=Sáb
+  return (dow === 0 || dow === 6)
+    ? { start: 8,  end: 19 }   // fim de semana: 08h–19h
+    : { start: 18, end: 24 }   // seg–sex: 18h–00h
+}
+
+function buildSlots(start: number, end: number) {
+  return Array.from({ length: (end - start) * 2 }, (_, i) => {
+    const totalMin = start * 60 + i * 30
+    const h = Math.floor(totalMin / 60)
+    const m = totalMin % 60
+    return { label: `${(h % 24).toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`, h, m }
+  })
+}
+
+function buildSlotsFim(start: number, end: number) {
+  return Array.from({ length: (end - start) * 2 + 1 }, (_, i) => {
+    const totalMin = start * 60 + i * 30
+    const h = Math.floor(totalMin / 60)
+    const m = totalMin % 60
+    const value = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`  // "24:00" p/ meia-noite
+    const label = `${(h % 24).toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}` // "00:00" p/ display
+    return { value, label, h, m }
+  })
+}
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -56,7 +69,7 @@ type Agendamento = {
   duracaoMin:  number
   tipo:        "AVULSO" | "MENSALISTA"
   valor:       number
-  status:      "CONFIRMADO" | "PENDENTE" | "CANCELADO"
+  status:      "CONFIRMADO" | "PENDENTE" | "CANCELADO" | "PAGO"
 }
 
 type FormState = {
@@ -70,10 +83,12 @@ type FormState = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function toMin(h: number, m: number)    { return h * 60 + m }
-function toTopPx(h: number, m: number)  { return ((h - HOUR_START) * 2 + m / 30) * SLOT_H }
-function toDurPx(min: number)           { return (min / 30) * SLOT_H }
-function dateKey(d: Date)               { return format(d, "yyyy-MM-dd") }
+function toMin(h: number, m: number)   { return h * 60 + m }
+function toTopPx(h: number, m: number, hourStart: number) {
+  return ((h - hourStart) * 2 + m / 30) * SLOT_H
+}
+function toDurPx(min: number)          { return (min / 30) * SLOT_H }
+function dateKey(d: Date)              { return format(d, "yyyy-MM-dd") }
 
 function isSlotOccupied(slot: { h: number; m: number }, ags: Agendamento[]) {
   const s = toMin(slot.h, slot.m)
@@ -94,17 +109,19 @@ function gerarDatasMensais(data: Date): Date[] {
   return datas
 }
 
-function conflitosNoPeriodo(inicioStr: string, fimStr: string, ags: Agendamento[]) {
+function conflitosNoPeriodo(inicioStr: string, fimStr: string, ags: Agendamento[], excluirId?: string) {
   const [ih, im] = inicioStr.split(":").map(Number)
   const [fh, fm] = fimStr.split(":").map(Number)
   const start = toMin(ih, im)
   const end   = toMin(fh, fm)
   if (end <= start) return []
-  return ags.filter((a) => a.status !== "CANCELADO").filter((a) => {
-    const as = toMin(a.inicio.h, a.inicio.m)
-    const ae = as + a.duracaoMin
-    return start < ae && end > as
-  })
+  return ags
+    .filter((a) => a.status !== "CANCELADO" && a.id !== excluirId)
+    .filter((a) => {
+      const as = toMin(a.inicio.h, a.inicio.m)
+      const ae = as + a.duracaoMin
+      return start < ae && end > as
+    })
 }
 
 function fmt(h: number, m: number) {
@@ -117,35 +134,58 @@ const statusColor: Record<string, string> = {
   CONFIRMADO: "bg-primary/15 border-primary/40 text-primary",
   PENDENTE:   "bg-yellow-400/20 border-yellow-500/40 text-yellow-700",
   CANCELADO:  "bg-red-500/15 border-red-500/40 text-red-600",
+  PAGO:       "bg-green-500/15 border-green-500/40 text-green-700",
 }
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
+type Precos = {
+  valor1h?:   number
+  valor1h30?: number
+  valor2h?:   number
+}
+
+function valorParaDuracao(min: number, precos: Precos): string {
+  if (min === 60  && precos.valor1h   != null) return String(precos.valor1h)
+  if (min === 90  && precos.valor1h30 != null) return String(precos.valor1h30)
+  if (min === 120 && precos.valor2h   != null) return String(precos.valor2h)
+  return ""
+}
+
 export function CalendarioAgendamentos({
   quadraId,
   quadraNome,
+  precos = {},
 }: {
-  quadraId:  string
+  quadraId:   string
   quadraNome: string
+  precos?:    Precos
 }) {
-  const [date, setDate]               = useState(new Date())
+  const [date, setDate]                 = useState(new Date())
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
-  const [dialogOpen, setDialogOpen]   = useState(false)
-  const [salvando, setSalvando]       = useState(false)
-  const [erro, setErro]               = useState("")
-  const [sucesso, setSucesso]         = useState("")
+  const [dialogOpen, setDialogOpen]     = useState(false)
+  const [editandoId, setEditandoId]     = useState<string | null>(null)
+  const [salvando, setSalvando]         = useState(false)
+  const [excluindo, setExcluindo]       = useState<string | null>(null)
+  const [erro, setErro]                 = useState("")
+  const [sucesso, setSucesso]           = useState("")
 
   const [form, setForm] = useState<FormState>({
     tipo:    "AVULSO",
     cliente: "",
     dataSel: new Date(),
-    inicio:  "08:00",
-    fim:     "09:00",
+    inicio:  "18:00",
+    fim:     "19:00",
     valor:   "",
   })
   const [calAberto, setCalAberto] = useState(false)
 
   const key = dateKey(date)
+
+  // Horários dinâmicos por dia da semana
+  const { start: HOUR_START, end: HOUR_END } = getHours(date)
+  const slots    = buildSlots(HOUR_START, HOUR_END)
+  const slotsFim = buildSlotsFim(HOUR_START, HOUR_END)
 
   useEffect(() => {
     buscarAgendamentosPorData(key)
@@ -154,7 +194,7 @@ export function CalendarioAgendamentos({
   }, [key])
 
   const datasMensais = form.tipo === "MENSALISTA" ? gerarDatasMensais(form.dataSel) : []
-  const conflitos    = conflitosNoPeriodo(form.inicio, form.fim, agendamentos)
+  const conflitos    = conflitosNoPeriodo(form.inicio, form.fim, agendamentos, editandoId ?? undefined)
   const ocupado      = conflitos.length > 0
   const fimValido    = toMin(...(form.fim.split(":").map(Number) as [number, number])) >
                        toMin(...(form.inicio.split(":").map(Number) as [number, number]))
@@ -163,23 +203,54 @@ export function CalendarioAgendamentos({
   // ── Handlers ──
 
   function abrirDialog(slot?: { h: number; m: number }) {
-    const inicioH = slot?.h ?? 8
-    const inicioM = slot?.m ?? 0
-    const fimMin  = inicioH * 60 + inicioM + 60
-    const inicio  = `${inicioH.toString().padStart(2, "0")}:${inicioM.toString().padStart(2, "0")}`
-    const fim     = `${Math.floor(fimMin / 60).toString().padStart(2, "0")}:${(fimMin % 60).toString().padStart(2, "0")}`
-    setForm({
-      tipo:    "AVULSO",
-      cliente: "",
-      dataSel: date,
-      inicio,
-      fim,
-      valor:   "",
-    })
+    const inicioH  = slot?.h ?? HOUR_START
+    const inicioM  = slot?.m ?? 0
+    const rawFim   = inicioH * 60 + inicioM + 60
+    const fimMin   = Math.min(rawFim, HOUR_END * 60)
+    const inicio   = fmt(inicioH % 24, inicioM)
+    const fim      = `${Math.floor(fimMin / 60).toString().padStart(2, "0")}:${(fimMin % 60).toString().padStart(2, "0")}`
+    const durMin   = fimMin - (inicioH * 60 + inicioM)
+    const valorAuto = valorParaDuracao(durMin, precos)
+    setForm({ tipo: "AVULSO", cliente: "", dataSel: date, inicio, fim, valor: valorAuto })
+    setEditandoId(null)
     setCalAberto(false)
     setErro("")
     setSucesso("")
     setDialogOpen(true)
+  }
+
+  function abrirDialogEditar(ag: Agendamento) {
+    const fimMin = toMin(ag.inicio.h, ag.inicio.m) + ag.duracaoMin
+    const fimH   = Math.floor(fimMin / 60)
+    const fimM   = fimMin % 60
+    const fimStr = `${fimH.toString().padStart(2, "0")}:${fimM.toString().padStart(2, "0")}`
+    setForm({
+      tipo:    ag.tipo,
+      cliente: ag.clienteNome,
+      dataSel: date,
+      inicio:  fmt(ag.inicio.h, ag.inicio.m),
+      fim:     fimStr,
+      valor:   ag.valor > 0 ? String(ag.valor) : "",
+    })
+    setEditandoId(ag.id)
+    setErro("")
+    setSucesso("")
+    setDialogOpen(true)
+  }
+
+  async function handleExcluir(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!window.confirm("Excluir este agendamento?")) return
+    setExcluindo(id)
+    try {
+      await excluirAgendamento(id)
+      const lista = await buscarAgendamentosPorData(key)
+      setAgendamentos(lista)
+    } catch {
+      alert("Erro ao excluir. Tente novamente.")
+    } finally {
+      setExcluindo(null)
+    }
   }
 
   async function confirmar() {
@@ -189,13 +260,22 @@ export function CalendarioAgendamentos({
     setSucesso("")
 
     try {
-      const dataISO  = format(form.dataSel, "yyyy-MM-dd")
-      const valor    = parseFloat(form.valor.replace(",", "."))
-      const [ih, im] = form.inicio.split(":").map(Number)
-      const [fh, fm] = form.fim.split(":").map(Number)
+      const dataISO    = format(form.dataSel, "yyyy-MM-dd")
+      const valor      = parseFloat(form.valor.replace(",", "."))
+      const [ih, im]   = form.inicio.split(":").map(Number)
+      const [fh, fm]   = form.fim.split(":").map(Number)
       const duracaoMin = toMin(fh, fm) - toMin(ih, im)
 
-      if (form.tipo === "AVULSO") {
+      if (editandoId) {
+        await editarAgendamento(editandoId, {
+          nomeCliente: form.cliente.trim(),
+          data:        dataISO,
+          horaInicio:  form.inicio,
+          duracaoMin,
+          valor,
+        })
+        setSucesso("Agendamento atualizado!")
+      } else if (form.tipo === "AVULSO") {
         await criarAgendamentoAdmin({
           quadraId,
           nomeCliente: form.cliente.trim(),
@@ -205,7 +285,7 @@ export function CalendarioAgendamentos({
           tipo:        "AVULSO",
           valor,
         })
-        setSucesso("Agendamento criado com sucesso!")
+        setSucesso("Agendamento criado!")
       } else {
         await criarAgendamentosMensaisAdmin({
           quadraId,
@@ -222,7 +302,7 @@ export function CalendarioAgendamentos({
       setAgendamentos(lista)
       setTimeout(() => setDialogOpen(false), 900)
     } catch {
-      setErro("Erro ao criar agendamento. Tente novamente.")
+      setErro("Erro ao salvar agendamento. Tente novamente.")
     } finally {
       setSalvando(false)
     }
@@ -284,6 +364,7 @@ export function CalendarioAgendamentos({
         {[
           { color: "bg-primary/20 border-primary/40",       label: "Confirmado" },
           { color: "bg-yellow-500/20 border-yellow-500/40", label: "Pendente"   },
+          { color: "bg-green-500/20 border-green-500/40",   label: "Pago"       },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <div className={`w-3 h-3 rounded-sm border ${color}`} />
@@ -321,30 +402,62 @@ export function CalendarioAgendamentos({
             })}
 
             {agendamentos.map((ag) => {
-              const top     = toTopPx(ag.inicio.h, ag.inicio.m)
-              const height  = toDurPx(ag.duracaoMin)
-              const endMin  = toMin(ag.inicio.h, ag.inicio.m) + ag.duracaoMin
-              const iniStr  = `${ag.inicio.h.toString().padStart(2, "0")}:${ag.inicio.m.toString().padStart(2, "0")}`
-              const fimStr  = `${Math.floor(endMin / 60).toString().padStart(2, "0")}:${(endMin % 60).toString().padStart(2, "0")}`
+              const top    = toTopPx(ag.inicio.h, ag.inicio.m, HOUR_START)
+              const height = toDurPx(ag.duracaoMin)
+              // Não renderiza se estiver fora do intervalo visível
+              if (top < 0 || top >= slots.length * SLOT_H) return null
+              const endMin = toMin(ag.inicio.h, ag.inicio.m) + ag.duracaoMin
+              const iniStr = fmt(ag.inicio.h, ag.inicio.m)
+              const fimH   = Math.floor(endMin / 60)
+              const fimM   = endMin % 60
+              const fimStr = fmt(fimH % 24, fimM)
               const isTiny  = height < 55
               const isSmall = height < 90
+              const isExcluindo = excluindo === ag.id
+
+              const BtnEditar = (
+                <button
+                  title="Editar"
+                  disabled={isExcluindo}
+                  onClick={(e) => { e.stopPropagation(); abrirDialogEditar(ag) }}
+                  className="p-1 rounded hover:bg-black/20 transition-colors disabled:opacity-40"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )
+              const BtnExcluir = (
+                <button
+                  title="Excluir"
+                  disabled={isExcluindo}
+                  onClick={(e) => handleExcluir(ag.id, e)}
+                  className="p-1 rounded hover:bg-black/20 transition-colors disabled:opacity-40"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )
 
               return (
                 <div
                   key={ag.id}
                   style={{ top, height, left: 4, right: 4 }}
-                  className={`absolute rounded-lg border overflow-hidden select-none ${statusColor[ag.status]}`}
+                  className={`absolute rounded-lg border overflow-hidden select-none ${statusColor[ag.status] ?? statusColor.CONFIRMADO} ${isExcluindo ? "opacity-50" : ""}`}
                 >
                   {isTiny ? (
-                    <div className="h-full px-3 flex items-center justify-between gap-2">
-                      <span className="font-mono font-bold text-sm">{iniStr} → {fimStr}</span>
-                      <span className="text-[10px] font-semibold opacity-70 uppercase tracking-wide shrink-0">Ocupado</span>
+                    <div className="h-full px-2 flex items-center justify-between gap-1">
+                      <span className="font-mono font-bold text-xs">{iniStr}→{fimStr}</span>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {BtnEditar}
+                        {BtnExcluir}
+                      </div>
                     </div>
                   ) : isSmall ? (
-                    <div className="h-full px-3 py-1.5 flex flex-col justify-center gap-0.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono font-bold text-sm">{iniStr} → {fimStr}</span>
-                        <span className="text-[10px] font-bold opacity-70 uppercase tracking-wide shrink-0">Ocupado</span>
+                    <div className="h-full px-2 py-1 flex flex-col justify-center gap-0.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-mono font-bold text-sm">{iniStr}→{fimStr}</span>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {BtnEditar}
+                          {BtnExcluir}
+                        </div>
                       </div>
                       <p className="text-xs opacity-80 truncate">{ag.clienteNome}</p>
                     </div>
@@ -354,7 +467,10 @@ export function CalendarioAgendamentos({
                         <span className="font-mono font-bold text-base leading-none tracking-wide">
                           {iniStr}<span className="opacity-50 mx-1.5 font-normal">→</span>{fimStr}
                         </span>
-                        <span className="text-xs font-bold uppercase tracking-widest opacity-80">Ocupado</span>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {BtnEditar}
+                          {BtnExcluir}
+                        </div>
                       </div>
                       <div className="px-3 py-2 flex flex-col gap-1">
                         <p className="text-sm font-semibold leading-tight truncate">{ag.clienteNome}</p>
@@ -374,42 +490,46 @@ export function CalendarioAgendamentos({
         </div>
       </div>
 
-      {/* ── Dialog: Novo Agendamento ── */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!salvando) setDialogOpen(open) }}>
+      {/* ── Dialog: Novo / Editar Agendamento ── */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!salvando) { setDialogOpen(open); if (!open) setEditandoId(null) } }}>
         <DialogContent className="bg-card border-border w-full max-w-md mx-auto max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-foreground text-lg">Novo Agendamento</DialogTitle>
+            <DialogTitle className="text-foreground text-lg">
+              {editandoId ? "Editar Agendamento" : "Novo Agendamento"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-5 pt-1 pb-2">
 
-            {/* ── Tipo ── */}
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  { value: "AVULSO",     label: "Avulso",      desc: "Dia único",   Icon: CalendarDays },
-                  { value: "MENSALISTA", label: "Mensalista",  desc: "Todo o mês",  Icon: Repeat2      },
-                ] as const).map(({ value, label, desc, Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, tipo: value }))}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                      form.tipo === value
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"
-                    }`}
-                  >
-                    <Icon className={`w-5 h-5 ${form.tipo === value ? "text-primary" : ""}`} />
-                    <div className="text-center">
-                      <p className="font-semibold text-sm leading-tight">{label}</p>
-                      <p className="text-xs opacity-60 mt-0.5">{desc}</p>
-                    </div>
-                  </button>
-                ))}
+            {/* ── Tipo (desabilitado ao editar) ── */}
+            {!editandoId && (
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    { value: "AVULSO",     label: "Avulso",     desc: "Dia único",  Icon: CalendarDays },
+                    { value: "MENSALISTA", label: "Mensalista", desc: "Todo o mês", Icon: Repeat2      },
+                  ] as const).map(({ value, label, desc, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, tipo: value }))}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                        form.tipo === value
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"
+                      }`}
+                    >
+                      <Icon className={`w-5 h-5 ${form.tipo === value ? "text-primary" : ""}`} />
+                      <div className="text-center">
+                        <p className="font-semibold text-sm leading-tight">{label}</p>
+                        <p className="text-xs opacity-60 mt-0.5">{desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* ── Nome do cliente ── */}
             <div className="space-y-1.5">
@@ -462,11 +582,21 @@ export function CalendarioAgendamentos({
                   value={form.inicio}
                   onValueChange={(v) => {
                     const [ih, im] = v.split(":").map(Number)
-                    const fimMin   = ih * 60 + im + 60
+                    const rawFim   = ih * 60 + im + 60
+                    const fimMin   = Math.min(rawFim, HOUR_END * 60)
                     const novoFim  = `${Math.floor(fimMin / 60).toString().padStart(2, "0")}:${(fimMin % 60).toString().padStart(2, "0")}`
                     const [fh, fm] = form.fim.split(":").map(Number)
                     const fimAtualValido = toMin(fh, fm) > toMin(ih, im)
-                    setForm((f) => ({ ...f, inicio: v, fim: fimAtualValido ? f.fim : novoFim }))
+                    const fimEfetivo = fimAtualValido ? form.fim : novoFim
+                    const [efh, efm] = fimEfetivo.split(":").map(Number)
+                    const durMin = toMin(efh, efm) - toMin(ih, im)
+                    const valorAuto = valorParaDuracao(durMin, precos)
+                    setForm((f) => ({
+                      ...f,
+                      inicio: v,
+                      fim:    fimEfetivo,
+                      valor:  valorAuto !== "" ? valorAuto : f.valor,
+                    }))
                   }}
                 >
                   <SelectTrigger className="bg-secondary border-border text-foreground h-11">
@@ -486,10 +616,23 @@ export function CalendarioAgendamentos({
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Término</Label>
                 <Select
                   value={form.fim}
-                  onValueChange={(v) => setForm((f) => ({ ...f, fim: v }))}
+                  onValueChange={(v) => {
+                    const [ih, im] = form.inicio.split(":").map(Number)
+                    const [fh, fm] = v.split(":").map(Number)
+                    const durMin   = toMin(fh, fm) - toMin(ih, im)
+                    const valorAuto = valorParaDuracao(durMin, precos)
+                    setForm((f) => ({
+                      ...f,
+                      fim:   v,
+                      valor: valorAuto !== "" ? valorAuto : f.valor,
+                    }))
+                  }}
                 >
                   <SelectTrigger className="bg-secondary border-border text-foreground h-11">
-                    <SelectValue />
+                    <SelectValue>
+                      {/* Exibe "00:00" quando valor interno é "24:00" */}
+                      {form.fim === "24:00" ? "00:00" : form.fim}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border max-h-56">
                     {slotsFim
@@ -498,7 +641,7 @@ export function CalendarioAgendamentos({
                         return toMin(s.h, s.m) > toMin(ih, im)
                       })
                       .map((s) => (
-                        <SelectItem key={s.label} value={s.label} className="text-foreground">
+                        <SelectItem key={s.value} value={s.value} className="text-foreground">
                           {s.label}
                         </SelectItem>
                       ))}
@@ -508,7 +651,7 @@ export function CalendarioAgendamentos({
             </div>
 
             {/* ── Preview mensalista ── */}
-            {form.tipo === "MENSALISTA" && datasMensais.length > 0 && (
+            {form.tipo === "MENSALISTA" && !editandoId && datasMensais.length > 0 && (
               <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <Repeat2 className="w-4 h-4 text-primary shrink-0" />
@@ -535,17 +678,12 @@ export function CalendarioAgendamentos({
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-semibold">Conflito de horário</p>
-                  <p className="text-xs opacity-80">
-                    {conflitos.length === 1 ? "Já existe um agendamento" : "Já existem agendamentos"} neste período:
-                  </p>
                   <ul className="space-y-0.5">
                     {conflitos.map((c) => {
                       const fimMin = toMin(c.inicio.h, c.inicio.m) + c.duracaoMin
-                      const fimH   = Math.floor(fimMin / 60)
-                      const fimM   = fimMin % 60
                       return (
                         <li key={c.id} className="text-xs font-medium">
-                          • {c.clienteNome} — {fmt(c.inicio.h, c.inicio.m)} às {fmt(fimH, fimM)}
+                          • {c.clienteNome} — {fmt(c.inicio.h, c.inicio.m)} às {fmt(Math.floor(fimMin / 60) % 24, fimMin % 60)}
                         </li>
                       )
                     })}
@@ -592,7 +730,7 @@ export function CalendarioAgendamentos({
               <Button
                 variant="outline"
                 className="flex-1 h-11 border-border"
-                onClick={() => setDialogOpen(false)}
+                onClick={() => { setDialogOpen(false); setEditandoId(null) }}
                 disabled={salvando}
               >
                 Cancelar
@@ -602,7 +740,7 @@ export function CalendarioAgendamentos({
                 onClick={confirmar}
                 disabled={!formValido || salvando || ocupado}
               >
-                {salvando ? "Salvando..." : "Confirmar"}
+                {salvando ? "Salvando..." : editandoId ? "Salvar" : "Confirmar"}
               </Button>
             </div>
 

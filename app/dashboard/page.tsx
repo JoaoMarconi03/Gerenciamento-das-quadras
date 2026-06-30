@@ -1,9 +1,9 @@
-import { Calendar, ShoppingCart, BookOpen, TrendingUp, Clock } from "lucide-react"
+import { Calendar, ShoppingCart, BookOpen, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { AutoRefresh } from "@/components/auto-refresh"
+import { AgendamentosHoje } from "@/components/dashboard/agendamentos-hoje"
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -24,6 +24,8 @@ export default async function DashboardPage() {
         valor: string | null
         observacao: string | null
         clienteNome: string | null
+        pagamentoRegistrado: boolean
+        formaPagamento: string | null
       }>>`
         SELECT
           a.id,
@@ -33,7 +35,9 @@ export default async function DashboardPage() {
           a.tipo::text,
           a.valor::text,
           a.observacao,
-          c.nome AS "clienteNome"
+          c.nome AS "clienteNome",
+          a."pagamentoRegistrado",
+          a."formaPagamento"::text
         FROM "Agendamento" a
         LEFT JOIN "Cliente" c ON c.id = a."clienteId"
         WHERE a."quadraId" = ANY(${quadraIds})
@@ -43,9 +47,9 @@ export default async function DashboardPage() {
       `
     : []
 
-  // Faturamento hoje: soma dos valores confirmados
+  // Faturamento hoje: soma dos valores confirmados ou pagos
   const faturamento = agendamentosHoje
-    .filter((a) => a.status === "CONFIRMADO" && a.valor != null)
+    .filter((a) => (a.status === "CONFIRMADO" || a.status === "PAGO") && a.valor != null)
     .reduce((sum, a) => sum + Number(a.valor ?? 0), 0)
 
   // Fiado pendente: soma de todos os lançamentos - pagamentos do tenant
@@ -72,7 +76,7 @@ export default async function DashboardPage() {
     {
       title: "Agendamentos Hoje",
       value: String(agendamentosHoje.length),
-      sub: `${agendamentosHoje.filter((a) => a.status === "CONFIRMADO").length} confirmados`,
+      sub: `${agendamentosHoje.filter((a) => a.status === "CONFIRMADO" || a.status === "PAGO").length} confirmados`,
       icon: Calendar,
       color: "text-primary",
       bg: "bg-primary/10",
@@ -137,50 +141,7 @@ export default async function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          {agendamentosHoje.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              Nenhum agendamento para hoje.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {agendamentosHoje.map((ag) => {
-                const nome = ag.clienteNome ?? ag.observacao ?? "Avulso"
-                const tipo = ag.tipo === "MENSALISTA" ? "Mensalista" : "Avulso"
-                return (
-                  <div
-                    key={ag.id}
-                    className="flex items-center gap-3 py-2.5 px-3 rounded-lg bg-secondary/50"
-                  >
-                    <div className="flex items-center gap-1.5 text-primary shrink-0">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span className="text-sm font-semibold w-10">{ag.inicioHora}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{nome}</p>
-                      <p className="text-xs text-muted-foreground">
-                        até {ag.fimHora}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={
-                        tipo === "Mensalista"
-                          ? "border-primary/30 text-primary text-xs"
-                          : "border-border text-muted-foreground text-xs"
-                      }
-                    >
-                      {tipo}
-                    </Badge>
-                    {ag.valor != null && (
-                      <span className="text-sm font-medium text-foreground shrink-0">
-                        R$ {Number(ag.valor).toFixed(2).replace(".", ",")}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <AgendamentosHoje agendamentos={agendamentosHoje} />
         </CardContent>
       </Card>
 

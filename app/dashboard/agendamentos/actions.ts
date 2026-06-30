@@ -57,7 +57,11 @@ export async function buscarAgendamentosPorData(dateKey: string) {
   return rows.map((r) => {
     const [ih, im] = r.inicioHora.split(":").map(Number)
     const [fh, fm] = r.fimHora.split(":").map(Number)
-    const duracaoMin = (fh * 60 + fm) - (ih * 60 + im)
+    const inicioMin = ih * 60 + im
+    const fimRaw    = fh * 60 + fm
+    // "00:00" no retorno do DB significa meia-noite (próximo dia)
+    const fimMin    = fimRaw === 0 ? 24 * 60 : fimRaw
+    const duracaoMin = fimMin - inicioMin
     return {
       id:          r.id,
       clienteNome: r.clienteNome ?? r.observacao ?? "Avulso",
@@ -65,7 +69,7 @@ export async function buscarAgendamentosPorData(dateKey: string) {
       duracaoMin,
       tipo:        r.tipo as "AVULSO" | "MENSALISTA",
       valor:       r.valor ? Number(r.valor) : 0,
-      status:      r.status as "CONFIRMADO" | "PENDENTE" | "CANCELADO",
+      status:      r.status as "CONFIRMADO" | "PENDENTE" | "CANCELADO" | "PAGO",
     }
   })
 }
@@ -90,6 +94,55 @@ export async function cancelarAgendamento(id: string) {
   await verificarAdmin()
   await db.agendamento.update({ where: { id }, data: { status: "CANCELADO" } })
   revalidatePath("/dashboard/agendamentos")
+}
+
+// ── Registro de pagamento ─────────────────────────────────────────────────────
+
+export async function registrarPagamentoAgendamento(id: string) {
+  await getSession()
+  await db.agendamento.update({
+    where: { id },
+    data: {
+      status: "PAGO",
+      pagamentoRegistrado: true,
+      pagamentoRegistradoEm: new Date(),
+    },
+  })
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/pagamentos")
+}
+
+// ── Edição e exclusão ─────────────────────────────────────────────────────────
+
+export async function excluirAgendamento(id: string) {
+  await getSession()
+  await db.agendamento.delete({ where: { id } })
+  revalidatePath("/dashboard/agendamentos")
+  revalidatePath("/dashboard")
+}
+
+export async function editarAgendamento(id: string, dados: {
+  nomeCliente: string
+  data:        string  // "YYYY-MM-DD"
+  horaInicio:  string  // "HH:MM"
+  duracaoMin:  number
+  valor:       number
+}) {
+  await getSession()
+  const horaFim   = calcFim(dados.horaInicio, dados.duracaoMin)
+  const inicioStr = `${dados.data} ${dados.horaInicio}:00`
+  const fimStr    = `${dados.data} ${horaFim}:00`
+
+  await db.$executeRaw`
+    UPDATE "Agendamento"
+    SET inicio    = ${inicioStr}::timestamp,
+        fim       = ${fimStr}::timestamp,
+        observacao = ${dados.nomeCliente},
+        valor     = ${dados.valor}::decimal
+    WHERE id = ${id}
+  `
+  revalidatePath("/dashboard/agendamentos")
+  revalidatePath("/dashboard")
 }
 
 // ── Criação pelo admin ────────────────────────────────────────────────────────
