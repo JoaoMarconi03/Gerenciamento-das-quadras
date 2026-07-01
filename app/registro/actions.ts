@@ -27,7 +27,8 @@ export async function registrarCliente(formData: FormData) {
     return { error: "Este e-mail já está cadastrado." }
   }
 
-  const tenant = await db.tenant.findFirst({ where: { slug: "brejao-arena" } })
+  const arena  = (formData.get("arena") as string) || "brejao-arena"
+  const tenant = await db.tenant.findFirst({ where: { slug: arena } })
   if (!tenant) return { error: "Arena não encontrada." }
 
   const senhaHash = await hash(senha, 12)
