@@ -41,7 +41,7 @@ function RedefinirSenhaForm() {
     setLoad(false)
     if (!resultado.ok) { setErro(resultado.erro ?? "Erro ao redefinir."); return }
     setSucesso(true)
-    setTimeout(() => signOut({ redirectUrl: "/login" }), 3000)
+    setTimeout(() => signOut({ callbackUrl: "/login" }), 3000)
   }
 
   return (
