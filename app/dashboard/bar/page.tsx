@@ -9,7 +9,7 @@ import {
 import {
   buscarProdutos, criarProduto, atualizarProduto, excluirProduto,
   buscarVendas, criarVenda, atualizarVenda, excluirVenda,
-  buscarContasFiado, criarVendaFiado, criarClienteEContaFiado,
+  buscarContasFiado, criarVendaFiado, criarClienteEContaFiado, buscarTotalMes,
 } from "./actions"
 import {
   buscarContas, criarConta, lancarItem, registrarPagamento, buscarClientesParaFiado,
@@ -108,7 +108,8 @@ export default function BarPage() {
   const [buscaProdFiado, setBuscaProdFiado]   = useState("")
   const [produtoSelFiado, setProdutoSelFiado] = useState<ProdFiado | null>(null)
   const [qtdFiado, setQtdFiado]               = useState("1")
-  const [formPag, setFormPag]                 = useState({ valor: "", observacao: "" })
+  const [formPag, setFormPag]                 = useState({ valor: "", observacao: "", formaPagamento: "DINHEIRO" as "DINHEIRO" | "PIX" | "CARTAO" })
+  const [totalMes, setTotalMes]               = useState(0)
 
   const totalVenda     = itensVenda.reduce((s, i) => s + i.preco * i.quantidade, 0)
   const faturamentoDia = vendas.reduce((s, v) => s + v.total, 0)
@@ -128,6 +129,7 @@ export default function BarPage() {
   useEffect(() => {
     buscarProdutos().then(setProdutos)
     buscarVendas().then(setVendas)
+    buscarTotalMes().then(setTotalMes)
     recarregarContas()
     buscarProdutos().then((p) => setProdsFiado(p.map((x) => ({ id: x.id, nome: x.nome, preco: x.preco }))))
   }, [])
@@ -229,6 +231,7 @@ export default function BarPage() {
           if (editandoVenda) { await atualizarVenda(editandoVenda.id, payload) }
           else { await criarVenda(payload) }
           buscarVendas().then(setVendas)
+          buscarTotalMes().then(setTotalMes)
         }
         setDialogVenda(false)
       } catch (e: any) {
@@ -280,9 +283,18 @@ export default function BarPage() {
     const valor = parseFloat(formPag.valor)
     if (isNaN(valor) || valor <= 0) return
     startTransition(async () => {
-      await registrarPagamento({ contaId: contaSel.id, valor, observacao: formPag.observacao.trim() || null })
+      await registrarPagamento({
+        contaId: contaSel.id,
+        valor,
+        observacao: formPag.observacao.trim() || null,
+        formaPagamento: formPag.formaPagamento,
+      })
       await recarregarContas()
-      setContaSel(null); setFormPag({ valor: "", observacao: "" }); setDialogPagamento(false)
+      buscarVendas().then(setVendas)
+      buscarTotalMes().then(setTotalMes)
+      setContaSel(null)
+      setFormPag({ valor: "", observacao: "", formaPagamento: "DINHEIRO" })
+      setDialogPagamento(false)
     })
   }
 
@@ -309,17 +321,21 @@ export default function BarPage() {
 
         {/* ── ABA VENDAS ─────────────────────────────────────────────────── */}
         <TabsContent value="vendas" className="mt-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
               <p className="text-sm text-muted-foreground">
-                Faturamento hoje:{" "}
+                Hoje:{" "}
                 <span className="text-primary font-semibold">R$ {faturamentoDia.toFixed(2).replace(".", ",")}</span>
               </p>
-              <p className="text-xs text-muted-foreground">
-                {vendas.length} venda{vendas.length !== 1 ? "s" : ""} registrada{vendas.length !== 1 ? "s" : ""}
+              <p className="text-sm text-muted-foreground">
+                Este mês:{" "}
+                <span className="text-primary font-semibold">R$ {totalMes.toFixed(2).replace(".", ",")}</span>
+              </p>
+              <p className="text-xs text-muted-foreground col-span-2">
+                {vendas.length} venda{vendas.length !== 1 ? "s" : ""} registrada{vendas.length !== 1 ? "s" : ""} hoje
               </p>
             </div>
-            <Button onClick={abrirNovaVenda} className="gap-2">
+            <Button onClick={abrirNovaVenda} className="gap-2 shrink-0">
               <Plus className="w-4 h-4" />Nova venda
             </Button>
           </div>
@@ -329,18 +345,28 @@ export default function BarPage() {
               <div className="text-center py-10 text-muted-foreground text-sm">Nenhuma venda registrada ainda.</div>
             )}
             {vendas.map((v) => {
+              const isFiado = v.cliente.startsWith("[Fiado] ")
+              const nomeCliente = isFiado ? v.cliente.slice(8) : (v.cliente || "Cliente não identificado")
               const pg = pagamentoInfo[v.formaPagamento]
               const PgIcon = pg.icon
               return (
                 <Card key={v.id} className="bg-card border-border">
                   <CardContent className="p-4 flex items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-semibold text-sm text-foreground">{v.cliente || "Cliente não identificado"}</p>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <p className="font-semibold text-sm text-foreground">{nomeCliente}</p>
+                        {isFiado && (
+                          <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 font-medium">
+                            <BookOpen className="w-3 h-3" />Pagamento Fiado
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">{fmtHora(v.hora)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
-                        {v.itens.map((i) => `${i.nome}${i.quantidade > 1 ? ` x${i.quantidade}` : ""}`).join(" · ")}
+                        {v.itens.length > 0
+                          ? v.itens.map((i) => `${i.nome}${i.quantidade > 1 ? ` x${i.quantidade}` : ""}`).join(" · ")
+                          : isFiado ? "Quitação de conta fiado" : "—"
+                        }
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -348,6 +374,7 @@ export default function BarPage() {
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${pg.cor}`}>
                         <PgIcon className="w-3 h-3" />{pg.label}
                       </span>
+                      {!isFiado && (
                       <div className="flex gap-1 mt-0.5">
                         <button onClick={() => abrirEditarVenda(v)} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                           <Pencil className="w-3.5 h-3.5" />
@@ -356,6 +383,7 @@ export default function BarPage() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -759,7 +787,7 @@ export default function BarPage() {
                 <ShoppingCart className="w-4 h-4" />Lançar item
               </Button>
               <Button className="flex-1 gap-2" disabled={contaSel.saldo === 0}
-                onClick={() => { setFormPag({ valor: String(contaSel.saldo.toFixed(2)), observacao: "" }); setDialogPagamento(true) }}>
+                onClick={() => { setFormPag({ valor: String(contaSel.saldo.toFixed(2)), observacao: "", formaPagamento: "DINHEIRO" }); setDialogPagamento(true) }}>
                 <CheckCircle2 className="w-4 h-4" />Receber
               </Button>
             </div>
@@ -834,19 +862,41 @@ export default function BarPage() {
           <DialogHeader><DialogTitle className="text-foreground">Receber pagamento — {contaSel?.clienteNome}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Forma de pagamento</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(["DINHEIRO", "PIX", "CARTAO"] as const).map((fp) => {
+                  const info = pagamentoInfo[fp]
+                  const Icon = info.icon
+                  return (
+                    <button key={fp} type="button"
+                      onClick={() => setFormPag((f) => ({ ...f, formaPagamento: fp }))}
+                      className={cn(
+                        "flex flex-col items-center gap-1 py-2.5 rounded-lg border text-xs font-medium transition-all",
+                        formPag.formaPagamento === fp
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />{info.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Valor recebido (R$)</Label>
               <Input type="number" step="0.50" min="0.01" value={formPag.valor} onChange={(e) => setFormPag((f) => ({ ...f, valor: e.target.value }))}
                 className="bg-secondary border-border text-foreground" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Observação</Label>
-              <Input placeholder="Ex: pago via pix" value={formPag.observacao} onChange={(e) => setFormPag((f) => ({ ...f, observacao: e.target.value }))}
+              <Input placeholder="Opcional" value={formPag.observacao} onChange={(e) => setFormPag((f) => ({ ...f, observacao: e.target.value }))}
                 className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
             </div>
             <div className="flex gap-2 pt-1">
               <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogPagamento(false)}>Cancelar</Button>
               <Button className="flex-1" onClick={handlePagamento} disabled={!formPag.valor || isPending}>
-                {isPending ? "Salvando..." : "Confirmar"}
+                {isPending ? "Salvando..." : `Confirmar · R$ ${parseFloat(formPag.valor || "0").toFixed(2).replace(".", ",")}`}
               </Button>
             </div>
           </div>

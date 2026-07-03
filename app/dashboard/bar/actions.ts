@@ -60,17 +60,17 @@ export async function buscarVendas() {
     formaPagamento: string
     total: string
     criadoEm: Date
-    itemId: string
-    produtoId: string
-    nome: string
-    preco: string
-    quantidade: number
+    itemId: string | null
+    produtoId: string | null
+    nome: string | null
+    preco: string | null
+    quantidade: number | null
   }>>`
     SELECT
       v.id, v.cliente, v."formaPagamento"::text, v.total::text, v."criadoEm",
       i.id AS "itemId", i."produtoId", i.nome, i.preco::text, i.quantidade
     FROM "Venda" v
-    JOIN "ItemVenda" i ON i."vendaId" = v.id
+    LEFT JOIN "ItemVenda" i ON i."vendaId" = v.id
     WHERE v."tenantId" = ${tenantId}
       AND TO_CHAR(v."criadoEm", 'YYYY-MM-DD') = TO_CHAR(NOW(), 'YYYY-MM-DD')
     ORDER BY v."criadoEm" DESC
@@ -81,7 +81,9 @@ export async function buscarVendas() {
     if (!map.has(r.id)) {
       map.set(r.id, { ...r, itens: [] })
     }
-    map.get(r.id)!.itens.push(r)
+    if (r.itemId) {
+      map.get(r.id)!.itens.push(r)
+    }
   }
 
   return Array.from(map.values()).map((v) => ({
@@ -91,10 +93,10 @@ export async function buscarVendas() {
     total: Number(v.total),
     hora: v.criadoEm.toISOString(),
     itens: v.itens.map((i) => ({
-      produtoId: i.produtoId,
-      nome: i.nome,
-      preco: Number(i.preco),
-      quantidade: i.quantidade,
+      produtoId: i.produtoId ?? "",
+      nome: i.nome ?? "",
+      preco: Number(i.preco ?? 0),
+      quantidade: i.quantidade ?? 1,
     })),
   }))
 }
@@ -239,4 +241,15 @@ export async function criarClienteEContaFiado(data: {
   } catch (e) {
     return { ok: false, erro: e instanceof Error ? e.message : String(e) }
   }
+}
+
+export async function buscarTotalMes(): Promise<number> {
+  const tenantId = await getTenantId()
+  const result = await db.$queryRaw<[{ total: string }]>`
+    SELECT COALESCE(SUM(total), 0)::text AS total
+    FROM "Venda"
+    WHERE "tenantId" = ${tenantId}
+      AND DATE_TRUNC('month', "criadoEm") = DATE_TRUNC('month', NOW())
+  `
+  return Number(result[0].total)
 }

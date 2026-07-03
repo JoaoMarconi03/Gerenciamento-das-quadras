@@ -92,14 +92,40 @@ export async function lancarItem(data: {
 }
 
 export async function registrarPagamento(data: {
-  contaId:    string
-  valor:      number
-  observacao: string | null
+  contaId:        string
+  valor:          number
+  observacao:     string | null
+  formaPagamento: "DINHEIRO" | "PIX" | "CARTAO"
 }) {
+  const tenantId = await getTenantId()
+
+  const conta = await db.contaFiado.findUnique({
+    where: { id: data.contaId },
+    include: { cliente: { select: { nome: true } } },
+  })
+
   await db.pagamentoFiado.create({
     data: { contaId: data.contaId, valor: data.valor, observacao: data.observacao },
   })
+
+  // Registra como venda do dia para aparecer no faturamento
+  if (conta) {
+    const clienteNome = `[Fiado] ${conta.cliente.nome}`
+    await db.$executeRaw`
+      INSERT INTO "Venda" (id, "tenantId", cliente, "formaPagamento", total, "criadoEm")
+      VALUES (
+        gen_random_uuid(),
+        ${tenantId},
+        ${clienteNome},
+        ${data.formaPagamento}::"FormaPagamento",
+        ${data.valor},
+        NOW()
+      )
+    `
+  }
+
   revalidatePath("/dashboard/fiado")
+  revalidatePath("/dashboard/bar")
   revalidatePath("/dashboard")
 }
 
