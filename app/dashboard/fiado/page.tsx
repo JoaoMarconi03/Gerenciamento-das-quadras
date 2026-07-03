@@ -54,7 +54,7 @@ export default function FiadoPage() {
   const [formLanc, setFormLanc]     = useState({ produtoId: "", quantidade: "1" })
   const [buscaProduto, setBuscaProd] = useState("")
   const [produtoSelecionado, setProdutoSel] = useState<Produto | null>(null)
-  const [formPag,  setFormPag]  = useState({ valor: "", observacao: "" })
+  const [formPag,  setFormPag]  = useState({ valor: "", observacao: "", formaPagamento: "DINHEIRO" as "DINHEIRO" | "PIX" | "CARTAO" })
 
   async function recarregar() {
     const lista = await buscarContas()
@@ -140,14 +140,15 @@ export default function FiadoPage() {
     if (isNaN(valor) || valor <= 0) return
     startTransition(async () => {
       await registrarPagamento({
-        contaId:    contaSelecionada.id,
+        contaId:        contaSelecionada.id,
         valor,
-        observacao: formPag.observacao.trim() || null,
+        observacao:     formPag.observacao.trim() || null,
+        formaPagamento: formPag.formaPagamento,
       })
       const lista = await buscarContas()
       setContas(lista)
       setContaSel(null)
-      setFormPag({ valor: "", observacao: "" })
+      setFormPag({ valor: "", observacao: "", formaPagamento: "DINHEIRO" })
       setDialogPagamento(false)
     })
   }
@@ -426,7 +427,7 @@ export default function FiadoPage() {
                 className="flex-1 gap-2"
                 disabled={contaSelecionada.saldo === 0}
                 onClick={() => {
-                  setFormPag({ valor: String(contaSelecionada.saldo.toFixed(2)), observacao: "" })
+                  setFormPag({ valor: String(contaSelecionada.saldo.toFixed(2)), observacao: "", formaPagamento: "DINHEIRO" })
                   setDialogPagamento(true)
                 }}
               >
@@ -551,6 +552,26 @@ export default function FiadoPage() {
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Forma de pagamento</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(["DINHEIRO", "PIX", "CARTAO"] as const).map((fp) => {
+                  const labels: Record<string, string> = { DINHEIRO: "Dinheiro", PIX: "PIX", CARTAO: "Cartão" }
+                  return (
+                    <button key={fp} type="button"
+                      onClick={() => setFormPag((f) => ({ ...f, formaPagamento: fp }))}
+                      className={`py-2 rounded-lg border text-xs font-medium transition-all ${
+                        formPag.formaPagamento === fp
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                    >
+                      {labels[fp]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Valor recebido (R$)</Label>
               <Input
                 type="number"
@@ -564,7 +585,7 @@ export default function FiadoPage() {
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Observação</Label>
               <Input
-                placeholder="Ex: pago via pix"
+                placeholder="Opcional"
                 value={formPag.observacao}
                 onChange={(e) => setFormPag((f) => ({ ...f, observacao: e.target.value }))}
                 className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
