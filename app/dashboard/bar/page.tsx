@@ -12,7 +12,7 @@ import {
   buscarContasFiado, criarVendaFiado, criarClienteEContaFiado, buscarTotalMes,
 } from "./actions"
 import {
-  buscarContas, criarConta, lancarItem, registrarPagamento, buscarClientesParaFiado,
+  buscarContas, criarConta, lancarItem, registrarPagamento, buscarClientesParaFiado, excluirLancamento,
 } from "../fiado/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -379,16 +379,16 @@ export default function BarPage() {
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${pg.cor}`}>
                         <PgIcon className="w-3 h-3" />{pg.label}
                       </span>
-                      {!isFiado && (
                       <div className="flex gap-1 mt-0.5">
-                        <button onClick={() => abrirEditarVenda(v)} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        {!isFiado && (
+                          <button onClick={() => abrirEditarVenda(v)} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button onClick={() => setConfExcVenda(v)} className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -777,12 +777,25 @@ export default function BarPage() {
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {contaSel.lancamentos.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Sem lançamentos.</p>}
               {contaSel.lancamentos.map((l) => (
-                <div key={l.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div>
-                    <p className="text-sm text-foreground">{l.descricao}</p>
+                <div key={l.id} className="flex items-center gap-2 py-2 border-b border-border last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground truncate">{l.descricao}</p>
                     <p className="text-xs text-muted-foreground">{l.data}</p>
                   </div>
-                  <span className="text-sm font-semibold text-foreground">R$ {l.valor.toFixed(2).replace(".", ",")}</span>
+                  <span className="text-sm font-semibold text-foreground shrink-0">R$ {l.valor.toFixed(2).replace(".", ",")}</span>
+                  <button
+                    onClick={() => startTransition(async () => {
+                      await excluirLancamento(l.id)
+                      const lista = await buscarContas()
+                      setContas(lista)
+                      const atualizada = lista.find((c) => c.id === contaSel.id) ?? null
+                      setContaSel(atualizada)
+                    })}
+                    disabled={isPending}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>

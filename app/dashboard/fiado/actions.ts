@@ -129,6 +129,14 @@ export async function registrarPagamento(data: {
   revalidatePath("/dashboard")
 }
 
+export async function excluirLancamento(id: string) {
+  await getTenantId()
+  await db.lancamentoFiado.delete({ where: { id } })
+  revalidatePath("/dashboard/fiado")
+  revalidatePath("/dashboard/bar")
+  revalidatePath("/dashboard")
+}
+
 export async function buscarClientesParaFiado() {
   const tenantId = await getTenantId()
   const clientes = await db.cliente.findMany({
