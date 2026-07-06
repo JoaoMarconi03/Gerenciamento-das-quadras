@@ -11,8 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { buscarOcupacoesPublico } from "@/app/actions"
 
-// ── Constantes ────────────────────────────────────────────────────────────────
-
 const DURACOES = [
   { min: 60,  label: "1 hora"  },
   { min: 90,  label: "1h 30"   },
@@ -20,15 +18,6 @@ const DURACOES = [
 ]
 
 type Ocupacao = { inicio: string; fim: string }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getHours(d: Date) {
-  const dow = d.getDay() // 0=Dom, 6=Sáb
-  return (dow === 0 || dow === 6)
-    ? { start: 8,  end: 19 }  // fim de semana: 08h–19h
-    : { start: 18, end: 24 }  // seg–sex: 18h–00h
-}
 
 function toMin(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number)
@@ -53,22 +42,24 @@ function conflitosNoPeriodo(inicio: string, fim: string, ocupacoes: Ocupacao[]) 
   return ocupacoes.filter((o) => toMin(o.inicio) < e && toMin(o.fim) > s)
 }
 
-// ── Componente ────────────────────────────────────────────────────────────────
-
 export function HorariosPublico({
   quadraId,
   quadraNome,
   valor1h,
   valor1h30,
   valor2h,
+  horaAbertura = "08:00",
+  horaFechamento = "23:00",
   whatsapp = "",
 }: {
-  quadraId:   string
-  quadraNome: string
-  valor1h:    number | null
-  valor1h30:  number | null
-  valor2h:    number | null
-  whatsapp?:  string
+  quadraId:       string
+  quadraNome:     string
+  valor1h:        number | null
+  valor1h30:      number | null
+  valor2h:        number | null
+  horaAbertura?:  string
+  horaFechamento?: string
+  whatsapp?:      string
 }) {
   const [date, setDate]             = useState(new Date())
   const [ocupacoes, setOcupacoes]   = useState<Ocupacao[]>([])
@@ -77,7 +68,9 @@ export function HorariosPublico({
 
   const dateStr = format(date, "yyyy-MM-dd")
 
-  const { start: HOUR_START, end: HOUR_END } = getHours(date)
+  // Converte "HH:MM" → minutos; "00:00" vira meia-noite (24h = 1440 min)
+  const INICIO_MIN = toMin(horaAbertura)
+  const FIM_MIN    = horaFechamento === "00:00" ? 24 * 60 : toMin(horaFechamento)
 
   useEffect(() => {
     setSlotAberto(null)
@@ -90,18 +83,17 @@ export function HorariosPublico({
     if (!quadraId) return
     const id = setInterval(() => {
       buscarOcupacoesPublico(quadraId, dateStr).then(setOcupacoes)
-    }, 10 * 1000)
+    }, 10_000)
     return () => clearInterval(id)
   }, [quadraId, dateStr])
 
-  // Gera slots de 30 em 30 min conforme o dia da semana
+  // Slots de 30 em 30 minutos dentro do horário configurado
   const slots: string[] = []
-  for (let min = HOUR_START * 60; min < HOUR_END * 60; min += 30) {
+  for (let min = INICIO_MIN; min < FIM_MIN; min += 30) {
     slots.push(fmtMin(min))
   }
 
-  // "24:00" interno exibido como "00:00" no cabeçalho
-  const labelFim = HOUR_END === 24 ? "00:00" : fmtMin(HOUR_END * 60)
+  const labelFim = FIM_MIN === 24 * 60 ? "00:00" : fmtMin(FIM_MIN)
 
   function getValor(min: number): number | null {
     if (min === 60)  return valor1h
@@ -122,8 +114,7 @@ export function HorariosPublico({
   function irParaWhatsApp() {
     if (!slotAberto || !duracaoSel) return
     const fim      = adicionarMin(slotAberto, duracaoSel)
-    const conflitos = conflitosNoPeriodo(slotAberto, fim, ocupacoes)
-    if (conflitos.length > 0) return
+    if (conflitosNoPeriodo(slotAberto, fim, ocupacoes).length > 0) return
 
     const dataFormatada = format(date, "dd/MM/yyyy")
     const durLabel      = DURACOES.find((d) => d.min === duracaoSel)?.label ?? ""
@@ -141,7 +132,7 @@ export function HorariosPublico({
   return (
     <div className="space-y-4">
 
-      {/* ── Navegação de data ── */}
+      {/* Navegação de data */}
       <div className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3">
         <Button
           variant="ghost" size="icon"
@@ -159,12 +150,12 @@ export function HorariosPublico({
         </Button>
       </div>
 
-      {/* ── Lista de slots ── */}
+      {/* Lista de slots */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <p className="text-sm font-semibold text-foreground">{quadraNome}</p>
           <span className="text-xs text-muted-foreground">
-            {fmtMin(HOUR_START * 60)} – {labelFim}
+            {fmtMin(INICIO_MIN)} – {labelFim}
           </span>
         </div>
 
@@ -176,7 +167,6 @@ export function HorariosPublico({
             return (
               <div key={slot} className={aberto ? "bg-primary/5" : ""}>
 
-                {/* Linha principal do slot */}
                 <div className="flex items-center gap-3 px-4 py-3">
                   <div className="flex items-center gap-1.5 w-16 shrink-0">
                     <Clock className={`w-3.5 h-3.5 ${ocupado ? "text-muted-foreground/50" : "text-primary"}`} />
@@ -210,7 +200,7 @@ export function HorariosPublico({
                   )}
                 </div>
 
-                {/* ── Painel inline de reserva ── */}
+                {/* Painel inline de reserva */}
                 {aberto && (
                   <div className="px-4 pb-4 space-y-3 border-t border-border/50">
                     <p className="text-xs text-muted-foreground pt-3 font-medium uppercase tracking-wider">
@@ -218,11 +208,10 @@ export function HorariosPublico({
                       {" "}— escolha a duração:
                     </p>
 
-                    {/* Pills de duração */}
                     <div className="flex gap-2">
                       {DURACOES.map(({ min, label }) => {
                         const fim      = adicionarMin(slot, min)
-                        const passaFim = toMin(fim) > HOUR_END * 60
+                        const passaFim  = toMin(fim) > FIM_MIN
                         const conflitos = conflitosNoPeriodo(slot, fim, ocupacoes)
                         const invalido  = passaFim || conflitos.length > 0
                         const selecionado = duracaoSel === min
@@ -251,11 +240,10 @@ export function HorariosPublico({
                       })}
                     </div>
 
-                    {/* Mensagem de erro por duração */}
                     {duracaoSel && (() => {
                       const fim      = adicionarMin(slot, duracaoSel)
                       const conflitos = conflitosNoPeriodo(slot, fim, ocupacoes)
-                      const passaFim  = toMin(fim) > HOUR_END * 60
+                      const passaFim  = toMin(fim) > FIM_MIN
 
                       if (passaFim) {
                         return (
@@ -281,11 +269,10 @@ export function HorariosPublico({
                       return null
                     })()}
 
-                    {/* Preview de preço */}
                     {duracaoSel && (() => {
                       const fim = adicionarMin(slot, duracaoSel)
                       const invalido =
-                        toMin(fim) > HOUR_END * 60 ||
+                        toMin(fim) > FIM_MIN ||
                         conflitosNoPeriodo(slot, fim, ocupacoes).length > 0
                       const valor = getValor(duracaoSel)
                       if (invalido || !valor) return null
@@ -299,7 +286,6 @@ export function HorariosPublico({
                       )
                     })()}
 
-                    {/* Botões de ação */}
                     <div className="flex gap-2 pt-1">
                       <Button
                         variant="outline"
@@ -318,7 +304,7 @@ export function HorariosPublico({
                             if (!duracaoSel) return true
                             const fim = adicionarMin(slot, duracaoSel)
                             return conflitosNoPeriodo(slot, fim, ocupacoes).length > 0 ||
-                                   toMin(fim) > HOUR_END * 60
+                                   toMin(fim) > FIM_MIN
                           })()
                         }
                         onClick={irParaWhatsApp}

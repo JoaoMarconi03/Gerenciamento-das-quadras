@@ -20,6 +20,70 @@ async function verificarAdmin() {
 
 // ── Leitura ──────────────────────────────────────────────────────────────────
 
+export type AgendamentoSemana = {
+  id:          string
+  clienteNome: string
+  inicioHora:  string
+  fimHora:     string
+  inicioData:  string
+  tipo:        "AVULSO" | "MENSALISTA"
+  valor:       number
+  status:      "CONFIRMADO" | "PENDENTE" | "CANCELADO" | "PAGO"
+  inicio:      { h: number; m: number }
+  duracaoMin:  number
+}
+
+export async function buscarAgendamentosPorSemana(dataInicio: string): Promise<AgendamentoSemana[]> {
+  const session = await getSession()
+  const tenantId = (session.user as any)?.tenantId
+  if (!tenantId) return []
+
+  const rows = await db.$queryRaw<Array<{
+    id: string; observacao: string | null; tipo: string
+    valor: string | null; status: string; clienteNome: string | null
+    inicioHora: string; fimHora: string; inicioData: string
+  }>>`
+    SELECT
+      ag.id,
+      ag.observacao,
+      ag.tipo::text,
+      ag.valor::text,
+      ag.status::text,
+      cl.nome AS "clienteNome",
+      TO_CHAR(ag.inicio, 'HH24:MI') AS "inicioHora",
+      TO_CHAR(ag.fim,    'HH24:MI') AS "fimHora",
+      TO_CHAR(ag.inicio, 'YYYY-MM-DD') AS "inicioData"
+    FROM "Agendamento" ag
+    JOIN "Quadra" q ON ag."quadraId" = q.id
+    LEFT JOIN "Cliente" cl ON ag."clienteId" = cl.id
+    WHERE q."tenantId" = ${tenantId}
+      AND ag.status != 'CANCELADO'::"StatusAgendamento"
+      AND TO_CHAR(ag.inicio, 'YYYY-MM-DD') >= ${dataInicio}
+      AND TO_CHAR(ag.inicio, 'YYYY-MM-DD') < TO_CHAR((${dataInicio}::date + INTERVAL '7 days'), 'YYYY-MM-DD')
+    ORDER BY ag.inicio ASC
+  `
+
+  return rows.map((r) => {
+    const [ih, im] = r.inicioHora.split(":").map(Number)
+    const [fh, fm] = r.fimHora.split(":").map(Number)
+    const inicioMin = ih * 60 + im
+    const fimRaw   = fh * 60 + fm
+    const fimMin   = fimRaw === 0 ? 24 * 60 : fimRaw
+    return {
+      id:          r.id,
+      clienteNome: r.clienteNome ?? r.observacao ?? "Avulso",
+      inicioHora:  r.inicioHora,
+      fimHora:     r.fimHora,
+      inicioData:  r.inicioData,
+      tipo:        r.tipo as "AVULSO" | "MENSALISTA",
+      valor:       r.valor ? Number(r.valor) : 0,
+      status:      r.status as "CONFIRMADO" | "PENDENTE" | "CANCELADO" | "PAGO",
+      inicio:      { h: ih, m: im },
+      duracaoMin:  fimMin - inicioMin,
+    }
+  })
+}
+
 export async function buscarAgendamentosPorData(dateKey: string) {
   const session = await getSession()
   const tenantId = (session.user as any)?.tenantId

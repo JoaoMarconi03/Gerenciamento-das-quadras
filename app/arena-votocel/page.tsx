@@ -21,7 +21,7 @@ export default async function ArenaVotocelPage() {
             <span className="font-bold text-lg">Arena Votocel</span>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/login?arena=arena-votocel">Área admin</Link>
+            <Link href="/arena-votocel/login">Área admin</Link>
           </Button>
         </div>
       </header>
@@ -104,6 +104,8 @@ export default async function ArenaVotocelPage() {
           valor1h={quadra?.valor1h ?? null}
           valor1h30={quadra?.valor1h30 ?? null}
           valor2h={quadra?.valor2h ?? null}
+          horaAbertura={quadra?.horaAbertura ?? "08:00"}
+          horaFechamento={quadra?.horaFechamento ?? "23:00"}
           whatsapp={whatsapp}
         />
       </section>

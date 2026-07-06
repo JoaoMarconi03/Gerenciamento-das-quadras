@@ -104,6 +104,8 @@ export default async function HomePage() {
           valor1h={quadra?.valor1h ?? null}
           valor1h30={quadra?.valor1h30 ?? null}
           valor2h={quadra?.valor2h ?? null}
+          horaAbertura={quadra?.horaAbertura ?? "08:00"}
+          horaFechamento={quadra?.horaFechamento ?? "23:00"}
           whatsapp={whatsapp}
         />
       </section>

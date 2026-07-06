@@ -7,8 +7,8 @@ import { Providers } from "@/components/providers"
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  title: "Brejão Arena",
-  description: "Sistema de gestão da Brejão Arena",
+  title: "Gestão de Arenas",
+  description: "Sistema de gestão de arenas esportivas",
 }
 
 export default function RootLayout({

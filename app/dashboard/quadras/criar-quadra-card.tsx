@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Trophy, Clock, Calendar, MapPin, Pencil } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { atualizarQuadra } from "./actions"
+import { criarQuadra } from "./actions"
 
 const DIAS = [
   { key: "SEG", label: "Seg" },
@@ -25,48 +23,22 @@ const DIAS = [
   { key: "DOM", label: "Dom" },
 ]
 
-function formatarDias(diasStr: string) {
-  const dias = diasStr.split(",").map((d) => d.trim())
-  if (dias.length === 7) return "Seg – Dom"
-  if (dias.length === 6 && !dias.includes("DOM")) return "Seg – Sáb"
-  if (dias.length === 5 && !dias.includes("SAB") && !dias.includes("DOM")) return "Seg – Sex"
-  return dias.map((d) => DIAS.find((x) => x.key === d)?.label ?? d).join(", ")
+const FORM_INICIAL = {
+  nome:           "",
+  descricao:      "",
+  endereco:       "",
+  horaAbertura:   "08:00",
+  horaFechamento: "22:00",
+  diasSel:        ["SEG","TER","QUA","QUI","SEX","SAB","DOM"],
+  valor1h:        "",
+  valor1h30:      "",
+  valor2h:        "",
 }
 
-function formatarValor(v: number | null) {
-  if (v == null) return "—"
-  return `R$ ${v.toFixed(2).replace(".", ",")}`
-}
-
-export type Quadra = {
-  id: string
-  nome: string
-  descricao: string | null
-  endereco: string | null
-  ativa: boolean
-  horaAbertura: string
-  horaFechamento: string
-  diasFuncionamento: string
-  valor1h: number | null
-  valor1h30: number | null
-  valor2h: number | null
-}
-
-export function QuadraCard({ quadra }: { quadra: Quadra }) {
+export function CriarQuadraCard() {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-
-  const [form, setForm] = useState({
-    nome:           quadra.nome,
-    descricao:      quadra.descricao ?? "",
-    endereco:       quadra.endereco ?? "",
-    horaAbertura:   quadra.horaAbertura  ?? "08:00",
-    horaFechamento: quadra.horaFechamento ?? "23:00",
-    diasSel:        (quadra.diasFuncionamento ?? "SEG,TER,QUA,QUI,SEX,SAB,DOM").split(",").map((d) => d.trim()),
-    valor1h:        quadra.valor1h   != null ? String(quadra.valor1h)   : "",
-    valor1h30:      quadra.valor1h30 != null ? String(quadra.valor1h30) : "",
-    valor2h:        quadra.valor2h   != null ? String(quadra.valor2h)   : "",
-  })
+  const [form, setForm] = useState(FORM_INICIAL)
 
   function toggleDia(key: string) {
     setForm((f) => ({
@@ -81,7 +53,7 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
     if (!form.nome.trim() || form.diasSel.length === 0) return
     const diasOrdenados = DIAS.filter((d) => form.diasSel.includes(d.key)).map((d) => d.key)
     startTransition(async () => {
-      await atualizarQuadra(quadra.id, {
+      await criarQuadra({
         nome:              form.nome,
         descricao:         form.descricao,
         endereco:          form.endereco,
@@ -98,88 +70,18 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
 
   return (
     <>
-      <Card className="bg-card border-border border-primary/30">
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <Trophy className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-bold text-foreground">{quadra.nome}</h2>
-                  <Badge className="bg-primary/10 text-primary border-primary/30 text-xs border">
-                    {quadra.ativa ? "Ativa" : "Inativa"}
-                  </Badge>
-                </div>
-                {quadra.descricao && (
-                  <p className="text-sm text-muted-foreground mt-0.5">{quadra.descricao}</p>
-                )}
-                {quadra.endereco && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">{quadra.endereco}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-border shrink-0 gap-1.5"
-              onClick={() => setOpen(true)}
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              Editar
-            </Button>
-          </div>
+      <div className="border-2 border-dashed border-border rounded-xl p-10 flex flex-col items-center justify-center gap-4 text-center">
+        <p className="text-muted-foreground text-sm">Nenhuma quadra cadastrada ainda.</p>
+        <Button onClick={() => setOpen(true)} className="gap-2">
+          <Plus className="w-4 h-4" />
+          Cadastrar quadra
+        </Button>
+      </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
-            <div className="bg-secondary/50 rounded-lg p-3">
-              <p className="text-xs text-muted-foreground">Horário de funcionamento</p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <Clock className="w-4 h-4 text-primary" />
-                <span className="text-sm font-semibold text-foreground">
-                  {quadra.horaAbertura} – {quadra.horaFechamento}
-                </span>
-              </div>
-            </div>
-            <div className="bg-secondary/50 rounded-lg p-3">
-              <p className="text-xs text-muted-foreground">Dias de funcionamento</p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <Calendar className="w-4 h-4 text-primary" />
-                <span className="text-sm font-semibold text-foreground">
-                  {formatarDias(quadra.diasFuncionamento ?? "SEG,TER,QUA,QUI,SEX,SAB,DOM")}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 border-t border-border pt-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Valores por duração
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: "1 hora",  val: quadra.valor1h },
-                { label: "1h30",    val: quadra.valor1h30 },
-                { label: "2 horas", val: quadra.valor2h },
-              ].map((v) => (
-                <div key={v.label} className="bg-secondary rounded-lg p-3 text-center">
-                  <p className="text-xs text-muted-foreground">{v.label}</p>
-                  <p className="text-sm font-bold text-primary mt-0.5">{formatarValor(v.val)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Dialog de edição */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-card border-border sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Editar quadra</DialogTitle>
+            <DialogTitle className="text-foreground">Cadastrar quadra</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-5 pt-1">
@@ -199,7 +101,7 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
                   value={form.endereco}
                   onChange={(e) => setForm((f) => ({ ...f, endereco: e.target.value }))}
                   className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                  placeholder="Ex: Rua das Flores, 123 – Brejão"
+                  placeholder="Ex: Rua das Flores, 123 – Votocel"
                 />
               </div>
               <div className="space-y-1.5">
@@ -301,7 +203,7 @@ export function QuadraCard({ quadra }: { quadra: Quadra }) {
                 onClick={salvar}
                 disabled={isPending || !form.nome.trim() || form.diasSel.length === 0}
               >
-                {isPending ? "Salvando…" : "Salvar"}
+                {isPending ? "Cadastrando…" : "Cadastrar"}
               </Button>
             </div>
           </div>

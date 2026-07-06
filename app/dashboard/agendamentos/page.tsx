@@ -56,7 +56,10 @@ export default async function AgendamentosPage({
     quadraNome:  p.quadra.nome,
   }))
 
-  const quadra = await db.quadra.findFirst({ where: { tenantId, ativa: true } })
+  const quadra = await db.quadra.findFirst({
+    where: { tenantId, ativa: true },
+    select: { id: true, nome: true, valor1h: true, valor1h30: true, valor2h: true, horaAbertura: true, horaFechamento: true },
+  })
 
   const precos = {
     valor1h:   quadra?.valor1h   ? Number(quadra.valor1h)   : undefined,
@@ -75,6 +78,8 @@ export default async function AgendamentosPage({
         quadraNome={quadra?.nome ?? "Quadra"}
         precos={precos}
         clienteFixo={clienteFixo}
+        horaAbertura={quadra?.horaAbertura ?? "08:00"}
+        horaFechamento={quadra?.horaFechamento ?? "23:00"}
       />
     </div>
   )
