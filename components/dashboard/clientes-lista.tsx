@@ -18,14 +18,6 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  vincularOuBuscarCliente,
   criarClienteManual,
   editarCliente,
   excluirCliente,
@@ -41,26 +33,12 @@ type Cliente = {
   mensalista:        boolean
 }
 
-type Usuario = {
-  id:    string
-  nome:  string
-  email: string
-}
-
-export function ClientesLista({
-  clientes,
-  usuarios,
-}: {
-  clientes: Cliente[]
-  usuarios: Usuario[]
-}) {
+export function ClientesLista({ clientes }: { clientes: Cliente[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
   const [busca, setBusca]           = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [modoDialog, setModoDialog] = useState<"app" | "manual">("app")
-  const [usuarioSel, setUsuarioSel] = useState("")
   const [formManual, setFormManual] = useState({ nome: "", telefone: "", email: "" })
   const [erro, setErro]             = useState("")
 
@@ -83,8 +61,6 @@ export function ClientesLista({
   )
 
   function abrirDialog() {
-    setModoDialog("app")
-    setUsuarioSel("")
     setFormManual({ nome: "", telefone: "", email: "" })
     setErro("")
     setDialogOpen(true)
@@ -104,22 +80,6 @@ export function ClientesLista({
         }
       } catch {
         setErro("Erro ao cadastrar. Tente novamente.")
-      }
-    })
-  }
-
-  function handleCriarEAgendar() {
-    if (!usuarioSel) return
-    setErro("")
-    startTransition(async () => {
-      try {
-        const { clienteId, clienteNome } = await vincularOuBuscarCliente(usuarioSel)
-        setDialogOpen(false)
-        router.push(
-          `/dashboard/agendamentos?clienteId=${clienteId}&clienteNome=${encodeURIComponent(clienteNome)}`,
-        )
-      } catch {
-        setErro("Erro ao vincular cliente. Tente novamente.")
       }
     })
   }
@@ -397,122 +357,44 @@ export function ClientesLista({
           <DialogHeader>
             <DialogTitle className="text-foreground">Novo Cliente</DialogTitle>
           </DialogHeader>
-
-          <div className="space-y-5 pt-1">
-
-            {/* Toggle App / Manual */}
-            <div className="grid grid-cols-2 gap-2 p-1 bg-secondary/50 rounded-xl">
-              <button
-                type="button"
-                onClick={() => { setModoDialog("app"); setErro("") }}
-                className={`py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
-                  modoDialog === "app"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Usuário do app
-              </button>
-              <button
-                type="button"
-                onClick={() => { setModoDialog("manual"); setErro("") }}
-                className={`py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
-                  modoDialog === "manual"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Cadastro manual
-              </button>
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome *</Label>
+              <Input
+                placeholder="Nome completo"
+                value={formManual.nome}
+                onChange={(e) => setFormManual((f) => ({ ...f, nome: e.target.value }))}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
+              />
             </div>
-
-            {/* Modo: Usuário do app */}
-            {modoDialog === "app" && (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Selecione um usuário cadastrado no aplicativo para vinculá-lo e já criar um agendamento no nome dele.
-                </p>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Usuário cadastrado
-                  </Label>
-                  <Select value={usuarioSel} onValueChange={setUsuarioSel}>
-                    <SelectTrigger className="bg-secondary border-border text-foreground h-11">
-                      <SelectValue placeholder="Selecione um usuário..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border max-h-60">
-                      {usuarios.length === 0 && (
-                        <SelectItem value="__empty" disabled className="text-muted-foreground">
-                          Nenhum usuário cadastrado
-                        </SelectItem>
-                      )}
-                      {usuarios.map((u) => (
-                        <SelectItem key={u.id} value={u.id} className="text-foreground">
-                          <div>
-                            <p className="font-medium">{u.nome}</p>
-                            <p className="text-xs text-muted-foreground">{u.email}</p>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {erro && <p className="text-xs text-destructive">{erro}</p>}
-                <div className="flex gap-2 pt-1">
-                  <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogOpen(false)} disabled={isPending}>
-                    Cancelar
-                  </Button>
-                  <Button className="flex-1 gap-2" onClick={handleCriarEAgendar} disabled={!usuarioSel || isPending}>
-                    <CalendarPlus className="w-4 h-4" />
-                    {isPending ? "Aguarde..." : "Criar e Agendar"}
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* Modo: Cadastro manual */}
-            {modoDialog === "manual" && (
-              <>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome *</Label>
-                  <Input
-                    placeholder="Nome completo"
-                    value={formManual.nome}
-                    onChange={(e) => setFormManual((f) => ({ ...f, nome: e.target.value }))}
-                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefone</Label>
-                  <Input
-                    placeholder="(15) 99999-0000"
-                    value={formManual.telefone}
-                    onChange={(e) => setFormManual((f) => ({ ...f, telefone: e.target.value }))}
-                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">E-mail</Label>
-                  <Input
-                    type="email"
-                    placeholder="email@exemplo.com"
-                    value={formManual.email}
-                    onChange={(e) => setFormManual((f) => ({ ...f, email: e.target.value }))}
-                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
-                  />
-                </div>
-                {erro && <p className="text-xs text-destructive">{erro}</p>}
-                <div className="flex gap-2 pt-1">
-                  <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogOpen(false)} disabled={isPending}>
-                    Cancelar
-                  </Button>
-                  <Button className="flex-1" onClick={handleCriarManual} disabled={!formManual.nome.trim() || isPending}>
-                    {isPending ? "Salvando..." : "Cadastrar"}
-                  </Button>
-                </div>
-              </>
-            )}
-
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefone</Label>
+              <Input
+                placeholder="(15) 99999-0000"
+                value={formManual.telefone}
+                onChange={(e) => setFormManual((f) => ({ ...f, telefone: e.target.value }))}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">E-mail</Label>
+              <Input
+                type="email"
+                placeholder="email@exemplo.com"
+                value={formManual.email}
+                onChange={(e) => setFormManual((f) => ({ ...f, email: e.target.value }))}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11"
+              />
+            </div>
+            {erro && <p className="text-xs text-destructive">{erro}</p>}
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogOpen(false)} disabled={isPending}>
+                Cancelar
+              </Button>
+              <Button className="flex-1" onClick={handleCriarManual} disabled={!formManual.nome.trim() || isPending}>
+                {isPending ? "Salvando..." : "Cadastrar"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
