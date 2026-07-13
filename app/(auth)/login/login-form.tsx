@@ -5,7 +5,13 @@ import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Trophy } from "lucide-react"
 
-export function LoginForm() {
+export function LoginForm({
+  voltarHref,
+  arenaLabel,
+}: {
+  voltarHref?: string
+  arenaLabel?: string
+} = {}) {
   const router = useRouter()
   const [email, setEmail]               = useState("")
   const [senha, setSenha]               = useState("")
@@ -37,11 +43,19 @@ export function LoginForm() {
         </div>
 
         <div className="relative">
+          {voltarHref && (
+            <a href={voltarHref} className="inline-flex items-center gap-1.5 text-sm mb-10" style={{ color: "rgba(255,255,255,0.45)" }}>
+              ← Voltar
+            </a>
+          )}
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: "#16a34a" }}>
               <Trophy className="w-6 h-6 text-white" />
             </div>
-            <span className="font-bold text-xl text-white">Gestão de Quadra</span>
+            <div>
+              <span className="font-bold text-xl text-white block">Gestão de Quadra</span>
+              {arenaLabel && <span className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>{arenaLabel}</span>}
+            </div>
           </div>
         </div>
 
