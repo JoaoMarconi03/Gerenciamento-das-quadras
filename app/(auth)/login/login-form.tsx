@@ -18,14 +18,14 @@ type LoginTema = {
 }
 
 const TEMA_VERDE: LoginTema = {
-  panelBg:    "linear-gradient(145deg, #0a1628 0%, #0f1e3d 50%, #0a1628 100%)",
-  glow1:      "rgba(29,78,216,0.20)",
-  glow2:      "rgba(250,204,21,0.08)",
-  iconBg:     "#1d4ed8",
+  panelBg:    "linear-gradient(145deg, #0a0a0a 0%, #071207 50%, #0d1f0d 100%)",
+  glow1:      "rgba(34,197,94,0.12)",
+  glow2:      "rgba(22,163,74,0.08)",
+  iconBg:     "#16a34a",
   iconColor:  "#ffffff",
-  inputFocus: "#1d4ed8",
-  btnBg:      "#1d4ed8",
-  btnHover:   "#1e40af",
+  inputFocus: "#16a34a",
+  btnBg:      "#16a34a",
+  btnHover:   "#15803d",
   btnColor:   "#ffffff",
 }
 

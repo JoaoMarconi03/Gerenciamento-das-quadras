@@ -13,16 +13,18 @@ function getIniciais(nome: string) {
 export function DashboardShell({
   children,
   tenantNome = "Gestão de Arena",
+  tenantSlug = "",
 }: {
   children: ReactNode
   tenantNome?: string
+  tenantSlug?: string
 }) {
   const [desktopOpen, setDesktopOpen] = useState(true)
   const [mobileOpen, setMobileOpen]   = useState(false)
   const iniciais = getIniciais(tenantNome)
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className={tenantSlug === "arena-brothers" ? "flex h-screen overflow-hidden theme-brothers" : "flex h-screen overflow-hidden"}>
 
       {/* ── Sidebar desktop — no fluxo flex, não fixed ────────────── */}
       <aside
