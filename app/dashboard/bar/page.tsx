@@ -11,6 +11,7 @@ import {
   buscarVendas, criarVenda, atualizarVenda, excluirVenda,
   buscarContasFiado, criarVendaFiado, criarClienteEContaFiado, buscarTotalMes,
 } from "./actions"
+import { toast } from "sonner"
 import {
   buscarContas, criarConta, lancarItem, registrarPagamento, buscarClientesParaFiado, excluirLancamento,
 } from "../fiado/actions"
@@ -228,14 +229,29 @@ export default function BarPage() {
             recarregarContas()
           }
           if (!contaId) { setErroVenda("Selecione um cliente para o fiado."); return }
-          await criarVendaFiado({ contaId, itens: itensVenda })
+          const { alertas: alertasFiado } = await criarVendaFiado({ contaId, itens: itensVenda })
           recarregarContas()
+          alertasFiado.forEach((a) =>
+            toast.warning(`⚠️ Estoque baixo: ${a.nome}`, {
+              description: `Restam apenas ${a.estoque} unidade${a.estoque !== 1 ? "s" : ""} (mínimo: ${a.estoqueMinimo})`,
+              duration: 8000,
+            })
+          )
         } else {
           const payload = { cliente: clienteTexto.trim(), formaPagamento: modoPag as FormaPagamento, total: totalVenda, itens: itensVenda }
           if (editandoVenda) { await atualizarVenda(editandoVenda.id, payload) }
-          else { await criarVenda(payload) }
-          buscarVendas().then(setVendas)
-          buscarTotalMes().then(setTotalMes)
+          else {
+            const { alertas } = await criarVenda(payload)
+            buscarVendas().then(setVendas)
+            buscarTotalMes().then(setTotalMes)
+            alertas.forEach((a) =>
+              toast.warning(`⚠️ Estoque baixo: ${a.nome}`, {
+                description: `Restam apenas ${a.estoque} unidade${a.estoque !== 1 ? "s" : ""} (mínimo: ${a.estoqueMinimo})`,
+                duration: 8000,
+              })
+            )
+          }
+          if (editandoVenda) { buscarVendas().then(setVendas); buscarTotalMes().then(setTotalMes) }
         }
         setDialogVenda(false)
       } catch (e: any) {
@@ -310,7 +326,7 @@ export default function BarPage() {
 
   return (
     <div className="p-4 lg:p-6 space-y-5">
-      <h1 className="text-xl font-bold text-foreground">Bar & Fiado</h1>
+      <h1 className="text-xl font-bold text-foreground">Bar</h1>
 
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList className="w-full sm:w-auto">

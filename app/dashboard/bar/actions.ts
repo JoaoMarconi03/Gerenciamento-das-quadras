@@ -3,7 +3,7 @@
 import { db } from "@/lib/db"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
-import { enviarAlertaEstoqueBaixo } from "@/lib/whatsapp"
+export type AlertaEstoque = { nome: string; estoque: number; estoqueMinimo: number }
 
 async function getTenantId() {
   const session = await auth()
@@ -125,7 +125,7 @@ export async function criarVenda(data: {
   formaPagamento: "DINHEIRO" | "PIX" | "CARTAO"
   total: number
   itens: ItemInput[]
-}) {
+}): Promise<{ alertas: AlertaEstoque[] }> {
   const tenantId = await getTenantId()
 
   const rows = await db.$queryRaw<[{ id: string }]>`
@@ -141,6 +141,7 @@ export async function criarVenda(data: {
     RETURNING id
   `
   const vendaId = rows[0].id
+  const alertas: AlertaEstoque[] = []
 
   for (const item of data.itens) {
     await db.$executeRaw`
@@ -157,16 +158,17 @@ export async function criarVenda(data: {
     await db.$executeRaw`
       UPDATE "Produto" SET estoque = GREATEST(0, estoque - ${item.quantidade}) WHERE id = ${item.produtoId}
     `
-    const pRows = await db.$queryRaw<Array<{ nome: string; estoque: number; estoqueMinimo: number }>>`
+    const pRows = await db.$queryRaw<Array<AlertaEstoque>>`
       SELECT nome, estoque, "estoqueMinimo" FROM "Produto" WHERE id = ${item.produtoId}
     `
     if (pRows[0] && pRows[0].estoque <= pRows[0].estoqueMinimo) {
-      await enviarAlertaEstoqueBaixo(pRows[0]).catch(() => {})
+      alertas.push(pRows[0])
     }
   }
 
   revalidatePath("/dashboard/bar")
   revalidatePath("/dashboard")
+  return { alertas }
 }
 
 export async function atualizarVenda(
@@ -238,8 +240,9 @@ export async function buscarContasFiado() {
 export async function criarVendaFiado(data: {
   contaId: string
   itens: { produtoId: string; nome: string; preco: number; quantidade: number }[]
-}) {
+}): Promise<{ alertas: AlertaEstoque[] }> {
   await getTenantId()
+  const alertas: AlertaEstoque[] = []
   for (const item of data.itens) {
     const descricao = item.quantidade > 1 ? `${item.nome} x${item.quantidade}` : item.nome
     const valor     = item.preco * item.quantidade
@@ -249,15 +252,16 @@ export async function criarVendaFiado(data: {
     await db.$executeRaw`
       UPDATE "Produto" SET estoque = GREATEST(0, estoque - ${item.quantidade}) WHERE id = ${item.produtoId}
     `
-    const pRows = await db.$queryRaw<Array<{ nome: string; estoque: number; estoqueMinimo: number }>>`
+    const pRows = await db.$queryRaw<Array<AlertaEstoque>>`
       SELECT nome, estoque, "estoqueMinimo" FROM "Produto" WHERE id = ${item.produtoId}
     `
     if (pRows[0] && pRows[0].estoque <= pRows[0].estoqueMinimo) {
-      await enviarAlertaEstoqueBaixo(pRows[0]).catch(() => {})
+      alertas.push(pRows[0])
     }
   }
   revalidatePath("/dashboard/fiado")
   revalidatePath("/dashboard")
+  return { alertas }
 }
 
 export async function criarClienteEContaFiado(data: {

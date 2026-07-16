@@ -3,7 +3,7 @@
 import { db } from "@/lib/db"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
-import { enviarAlertaEstoqueBaixo } from "@/lib/whatsapp"
+export type AlertaEstoque = { nome: string; estoque: number; estoqueMinimo: number }
 
 async function getTenantId() {
   const session = await auth()
@@ -82,6 +82,17 @@ export async function buscarComandasAbertas(): Promise<Comanda[]> {
   return Array.from(map.values())
 }
 
+export async function buscarClientesParaComanda() {
+  const tenantId = await getTenantId()
+  const rows = await db.$queryRaw<Array<{ id: string; nome: string; telefone: string | null }>>`
+    SELECT id, nome, telefone
+    FROM "Cliente"
+    WHERE "tenantId" = ${tenantId}
+    ORDER BY nome ASC
+  `
+  return rows
+}
+
 export async function buscarProdutosParaComanda() {
   const tenantId = await getTenantId()
   const rows = await db.$queryRaw<Array<{
@@ -119,7 +130,7 @@ export async function adicionarItemComanda(data: {
   produtoNome: string
   preco: number
   quantidade: number
-}) {
+}): Promise<{ alerta: AlertaEstoque | null }> {
   await getTenantId()
 
   await db.$executeRaw`
@@ -131,14 +142,16 @@ export async function adicionarItemComanda(data: {
     UPDATE "Produto" SET estoque = GREATEST(0, estoque - ${data.quantidade}) WHERE id = ${data.produtoId}
   `
 
-  const pRows = await db.$queryRaw<Array<{ nome: string; estoque: number; estoqueMinimo: number }>>`
+  const pRows = await db.$queryRaw<Array<AlertaEstoque>>`
     SELECT nome, estoque, "estoqueMinimo" FROM "Produto" WHERE id = ${data.produtoId}
   `
-  if (pRows[0] && pRows[0].estoque <= pRows[0].estoqueMinimo) {
-    await enviarAlertaEstoqueBaixo(pRows[0]).catch(() => {})
-  }
 
   revalidatePath("/dashboard/comandas")
+
+  if (pRows[0] && pRows[0].estoque <= pRows[0].estoqueMinimo) {
+    return { alerta: pRows[0] }
+  }
+  return { alerta: null }
 }
 
 export async function removerItemComanda(itemId: string, produtoId: string | null, quantidade: number) {

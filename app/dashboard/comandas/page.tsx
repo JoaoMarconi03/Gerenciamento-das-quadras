@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import {
   buscarComandasAbertas,
+  buscarClientesParaComanda,
   buscarProdutosParaComanda,
   abrirComanda,
   adicionarItemComanda,
@@ -23,8 +24,10 @@ import {
   type Comanda,
   type ItemComanda,
 } from "./actions"
+import { toast } from "sonner"
 
 type Produto = { id: string; nome: string; preco: number; categoria: string; estoque: number }
+type Cliente = { id: string; nome: string; telefone: string | null }
 type FormaPagamento = "DINHEIRO" | "PIX" | "CARTAO"
 
 const pagInfo: Record<FormaPagamento, { label: string; icon: React.ElementType }> = {
@@ -45,6 +48,7 @@ function tempoAberto(iso: string) {
 export default function ComandasPage() {
   const [comandas, setComandas]       = useState<Comanda[]>([])
   const [produtos, setProdutos]       = useState<Produto[]>([])
+  const [clientes, setClientes]       = useState<Cliente[]>([])
   const [comandaSel, setComandaSel]   = useState<Comanda | null>(null)
   const [isPending, startTransition]  = useTransition()
 
@@ -54,6 +58,8 @@ export default function ComandasPage() {
   const [dialogCancelar, setDialogCancelar] = useState(false)
   const [dialogDetalhe, setDialogDetalhe]  = useState(false)
 
+  const [modoNova, setModoNova]   = useState<"buscar" | "novo">("buscar")
+  const [buscaCli, setBuscaCli]   = useState("")
   const [formNova, setFormNova]   = useState({ nome: "", telefone: "" })
   const [buscaProd, setBuscaProd] = useState("")
   const [formaPag, setFormaPag]   = useState<FormaPagamento>("DINHEIRO")
@@ -70,6 +76,7 @@ export default function ComandasPage() {
   useEffect(() => {
     recarregar()
     buscarProdutosParaComanda().then(setProdutos)
+    buscarClientesParaComanda().then(setClientes)
   }, [])
 
   const prodFiltrados = buscaProd
@@ -91,20 +98,38 @@ export default function ComandasPage() {
     setDialogFechar(true)
   }
 
-  function handleCriarComanda() {
-    if (!formNova.nome.trim()) return
+  function handleAbrirDialogNova() {
+    setModoNova("buscar")
+    setBuscaCli("")
+    setFormNova({ nome: "", telefone: "" })
+    setDialogNova(true)
+  }
+
+  function handleCriarComanda(dados?: { nome: string; telefone?: string }) {
+    const nome = dados?.nome ?? formNova.nome
+    const telefone = dados?.telefone ?? formNova.telefone
+    if (!nome.trim()) return
     startTransition(async () => {
-      await abrirComanda({ clienteNome: formNova.nome, clienteTelefone: formNova.telefone })
+      await abrirComanda({ clienteNome: nome, clienteTelefone: telefone })
       await recarregar()
       setDialogNova(false)
       setFormNova({ nome: "", telefone: "" })
+      setBuscaCli("")
     })
   }
+
+  const clientesFiltrados = buscaCli
+    ? clientes.filter(
+        (c) =>
+          c.nome.toLowerCase().includes(buscaCli.toLowerCase()) ||
+          (c.telefone ?? "").includes(buscaCli)
+      )
+    : clientes
 
   function handleAdicionarItem(produto: Produto) {
     if (!comandaSel) return
     startTransition(async () => {
-      await adicionarItemComanda({
+      const { alerta } = await adicionarItemComanda({
         comandaId: comandaSel.id,
         produtoId: produto.id,
         produtoNome: produto.nome,
@@ -114,6 +139,12 @@ export default function ComandasPage() {
       await recarregar()
       buscarProdutosParaComanda().then(setProdutos)
       setDialogItem(false)
+      if (alerta) {
+        toast.warning(`⚠️ Estoque baixo: ${alerta.nome}`, {
+          description: `Restam apenas ${alerta.estoque} unidade${alerta.estoque !== 1 ? "s" : ""} (mínimo: ${alerta.estoqueMinimo})`,
+          duration: 8000,
+        })
+      }
     })
   }
 
@@ -165,7 +196,7 @@ export default function ComandasPage() {
             {totalGeral > 0 && ` — Total em aberto: R$ ${totalGeral.toFixed(2).replace(".", ",")}`}
           </p>
         </div>
-        <Button onClick={() => { setFormNova({ nome: "", telefone: "" }); setDialogNova(true) }} className="gap-2 shrink-0">
+        <Button onClick={handleAbrirDialogNova} className="gap-2 shrink-0">
           <Plus className="w-4 h-4" />Nova comanda
         </Button>
       </div>
@@ -218,35 +249,118 @@ export default function ComandasPage() {
           <DialogHeader>
             <DialogTitle className="text-foreground">Nova comanda</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 pt-1">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Nome do cliente *</Label>
-              <Input
-                placeholder="Ex: João Silva"
-                value={formNova.nome}
-                onChange={(e) => setFormNova((f) => ({ ...f, nome: e.target.value }))}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-                onKeyDown={(e) => e.key === "Enter" && handleCriarComanda()}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Telefone (opcional)</Label>
-              <Input
-                placeholder="(00) 00000-0000"
-                value={formNova.telefone}
-                onChange={(e) => setFormNova((f) => ({ ...f, telefone: e.target.value }))}
-                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogNova(false)}>
+
+          {/* Toggle de modo */}
+          <div className="flex bg-secondary rounded-lg p-1 gap-1">
+            <button
+              type="button"
+              onClick={() => { setModoNova("buscar"); setBuscaCli("") }}
+              className={cn(
+                "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
+                modoNova === "buscar"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Buscar cliente
+            </button>
+            <button
+              type="button"
+              onClick={() => { setModoNova("novo"); setFormNova({ nome: "", telefone: "" }) }}
+              className={cn(
+                "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
+                modoNova === "novo"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Novo cliente
+            </button>
+          </div>
+
+          {modoNova === "buscar" ? (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome ou telefone..."
+                  value={buscaCli}
+                  onChange={(e) => setBuscaCli(e.target.value)}
+                  className="pl-9 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                  autoFocus
+                />
+              </div>
+
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                {clientes.length === 0 && (
+                  <p className="text-center text-xs text-muted-foreground py-6">
+                    Nenhum cliente cadastrado ainda.
+                  </p>
+                )}
+                {clientes.length > 0 && clientesFiltrados.length === 0 && (
+                  <p className="text-center text-xs text-muted-foreground py-4">
+                    Nenhum cliente encontrado.
+                  </p>
+                )}
+                {clientesFiltrados.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => handleCriarComanda({ nome: c.nome, telefone: c.telefone ?? undefined })}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-secondary/60 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{c.nome}</p>
+                      {c.telefone && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="w-3 h-3" />{c.telefone}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <Button variant="outline" className="w-full border-border" onClick={() => setDialogNova(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" onClick={handleCriarComanda} disabled={!formNova.nome.trim() || isPending}>
-                {isPending ? "Abrindo..." : "Abrir comanda"}
-              </Button>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Nome do cliente *</Label>
+                <Input
+                  placeholder="Ex: João Silva"
+                  value={formNova.nome}
+                  onChange={(e) => setFormNova((f) => ({ ...f, nome: e.target.value }))}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                  onKeyDown={(e) => e.key === "Enter" && handleCriarComanda()}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Telefone (opcional)</Label>
+                <Input
+                  placeholder="(00) 00000-0000"
+                  value={formNova.telefone}
+                  onChange={(e) => setFormNova((f) => ({ ...f, telefone: e.target.value }))}
+                  className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogNova(false)}>
+                  Cancelar
+                </Button>
+                <Button className="flex-1" onClick={() => handleCriarComanda()} disabled={!formNova.nome.trim() || isPending}>
+                  {isPending ? "Abrindo..." : "Abrir comanda"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -22,7 +22,7 @@ const navItems = [
   { href: "/dashboard/agendamentos", label: "Agendamentos", icon: Calendar, exact: false },
   { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CircleDollarSign, exact: false },
   { href: "/dashboard/clientes", label: "Clientes", icon: Users, exact: false },
-  { href: "/dashboard/bar", label: "Bar & Fiado", icon: ShoppingCart, exact: false },
+  { href: "/dashboard/bar", label: "Bar", icon: ShoppingCart, exact: false },
   { href: "/dashboard/comandas", label: "Comandas", icon: ClipboardList, exact: false },
   { href: "/dashboard/quadras", label: "Quadras", icon: Trophy, exact: false },
   { href: "/dashboard/planos", label: "Planos Mensais", icon: Star, exact: false },
