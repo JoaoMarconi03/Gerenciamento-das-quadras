@@ -29,6 +29,7 @@ type Cliente = {
   telefone:          string | null
   email:             string | null
   usuarioId:         string | null
+  tipoCliente:       "AVULSO" | "MENSALISTA"
   totalAgendamentos: number
   mensalista:        boolean
 }
@@ -39,13 +40,13 @@ export function ClientesLista({ clientes }: { clientes: Cliente[] }) {
 
   const [busca, setBusca]           = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [formManual, setFormManual] = useState({ nome: "", telefone: "", email: "" })
+  const [formManual, setFormManual] = useState({ nome: "", telefone: "", email: "", tipoCliente: "AVULSO" as "AVULSO" | "MENSALISTA" })
   const [erro, setErro]             = useState("")
 
   // estado de edição
   const [editandoId, setEditandoId]   = useState<string | null>(null)
   const [editOpen, setEditOpen]       = useState(false)
-  const [formEdit, setFormEdit]       = useState({ nome: "", telefone: "", email: "" })
+  const [formEdit, setFormEdit]       = useState({ nome: "", telefone: "", email: "", tipoCliente: "AVULSO" as "AVULSO" | "MENSALISTA" })
   const [erroEdit, setErroEdit]       = useState("")
 
   // estado de confirmação de exclusão
@@ -61,7 +62,7 @@ export function ClientesLista({ clientes }: { clientes: Cliente[] }) {
   )
 
   function abrirDialog() {
-    setFormManual({ nome: "", telefone: "", email: "" })
+    setFormManual({ nome: "", telefone: "", email: "", tipoCliente: "AVULSO" })
     setErro("")
     setDialogOpen(true)
   }
@@ -92,7 +93,7 @@ export function ClientesLista({ clientes }: { clientes: Cliente[] }) {
 
   function abrirEditar(c: Cliente) {
     setEditandoId(c.id)
-    setFormEdit({ nome: c.nome, telefone: c.telefone ?? "", email: c.email ?? "" })
+    setFormEdit({ nome: c.nome, telefone: c.telefone ?? "", email: c.email ?? "", tipoCliente: c.tipoCliente })
     setErroEdit("")
     setEditOpen(true)
   }
@@ -301,6 +302,25 @@ export function ClientesLista({ clientes }: { clientes: Cliente[] }) {
             <DialogTitle className="text-foreground">Editar Cliente</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo de cliente</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["AVULSO", "MENSALISTA"] as const).map((tipo) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => setFormEdit((f) => ({ ...f, tipoCliente: tipo }))}
+                    className={`py-2.5 px-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                      formEdit.tipoCliente === tipo
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {tipo === "AVULSO" ? "Avulso" : "Mensalista"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome *</Label>
               <Input
@@ -358,6 +378,25 @@ export function ClientesLista({ clientes }: { clientes: Cliente[] }) {
             <DialogTitle className="text-foreground">Novo Cliente</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo de cliente</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["AVULSO", "MENSALISTA"] as const).map((tipo) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => setFormManual((f) => ({ ...f, tipoCliente: tipo }))}
+                    className={`py-2.5 px-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                      formManual.tipoCliente === tipo
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {tipo === "AVULSO" ? "Avulso" : "Mensalista"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome *</Label>
               <Input

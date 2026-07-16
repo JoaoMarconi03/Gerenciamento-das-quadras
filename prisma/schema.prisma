@@ -57,6 +57,7 @@ model Cliente {
   nome              String
   telefone          String?
   email             String?
+  tipoCliente       String             @default("AVULSO")
   usuarioId         String?            @unique
   usuario           Usuario?           @relation(fields: [usuarioId], references: [id])
   tenantId          String

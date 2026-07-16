@@ -13,22 +13,29 @@ async function getTenantId() {
 
 export async function buscarClientes() {
   const tenantId = await getTenantId()
-  const clientes = await db.cliente.findMany({
-    where: { tenantId },
-    include: {
-      _count: { select: { agendamentos: true } },
-      assinaturas: { where: { status: "ATIVA" }, take: 1 },
-    },
-    orderBy: { nome: "asc" },
-  })
-  return clientes.map((c) => ({
+  const rows = await db.$queryRaw<Array<{
+    id: string; nome: string; telefone: string | null; email: string | null
+    usuarioId: string | null; tipoCliente: string
+    totalAgendamentos: bigint; assinaturasAtivas: bigint
+  }>>`
+    SELECT
+      c.id, c.nome, c.telefone, c.email, c."usuarioId",
+      COALESCE(c."tipoCliente", 'AVULSO') AS "tipoCliente",
+      (SELECT COUNT(*) FROM "Agendamento" WHERE "clienteId" = c.id)::bigint AS "totalAgendamentos",
+      (SELECT COUNT(*) FROM "Assinatura" WHERE "clienteId" = c.id AND status = 'ATIVA'::"StatusAssinatura")::bigint AS "assinaturasAtivas"
+    FROM "Cliente" c
+    WHERE c."tenantId" = ${tenantId}
+    ORDER BY c.nome ASC
+  `
+  return rows.map((c) => ({
     id:                c.id,
     nome:              c.nome,
-    telefone:          c.telefone ?? null,
-    email:             c.email ?? null,
-    usuarioId:         c.usuarioId ?? null,
-    totalAgendamentos: c._count.agendamentos,
-    mensalista:        c.assinaturas.length > 0,
+    telefone:          c.telefone,
+    email:             c.email,
+    usuarioId:         c.usuarioId,
+    tipoCliente:       c.tipoCliente as "AVULSO" | "MENSALISTA",
+    totalAgendamentos: Number(c.totalAgendamentos),
+    mensalista:        c.tipoCliente === "MENSALISTA" || Number(c.assinaturasAtivas) > 0,
   }))
 }
 
@@ -70,20 +77,19 @@ export async function vincularOuBuscarCliente(usuarioId: string): Promise<{ clie
 }
 
 export async function criarClienteManual(dados: {
-  nome:     string
-  telefone: string
-  email:    string
+  nome:        string
+  telefone:    string
+  email:       string
+  tipoCliente: "AVULSO" | "MENSALISTA"
 }): Promise<{ ok: boolean; erro?: string }> {
   try {
     const tenantId = await getTenantId()
-    await db.cliente.create({
-      data: {
-        nome:     dados.nome.trim(),
-        telefone: dados.telefone.trim() || null,
-        email:    dados.email.trim()    || null,
-        tenantId,
-      },
-    })
+    const telefone = dados.telefone.trim() || null
+    const email    = dados.email.trim()    || null
+    await db.$executeRaw`
+      INSERT INTO "Cliente" (id, nome, telefone, email, "tipoCliente", "tenantId", "criadoEm")
+      VALUES (gen_random_uuid(), ${dados.nome.trim()}, ${telefone}, ${email}, ${dados.tipoCliente}, ${tenantId}, NOW())
+    `
     revalidatePath("/dashboard/clientes")
     return { ok: true }
   } catch (e) {
@@ -93,17 +99,19 @@ export async function criarClienteManual(dados: {
 
 export async function editarCliente(
   id: string,
-  dados: { nome: string; telefone: string; email: string },
+  dados: { nome: string; telefone: string; email: string; tipoCliente: "AVULSO" | "MENSALISTA" },
 ) {
   await getTenantId()
-  await db.cliente.update({
-    where: { id },
-    data: {
-      nome:     dados.nome.trim(),
-      telefone: dados.telefone.trim() || null,
-      email:    dados.email.trim()    || null,
-    },
-  })
+  const telefone = dados.telefone.trim() || null
+  const email    = dados.email.trim()    || null
+  await db.$executeRaw`
+    UPDATE "Cliente"
+    SET nome        = ${dados.nome.trim()},
+        telefone    = ${telefone},
+        email       = ${email},
+        "tipoCliente" = ${dados.tipoCliente}
+    WHERE id = ${id}
+  `
   revalidatePath("/dashboard/clientes")
 }
 
