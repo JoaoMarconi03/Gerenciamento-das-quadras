@@ -3,6 +3,7 @@
 import { db } from "@/lib/db"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
+import { enviarAlertaEstoqueBaixo } from "@/lib/whatsapp"
 
 async function getTenantId() {
   const session = await auth()
@@ -13,16 +14,25 @@ async function getTenantId() {
 
 export async function buscarProdutos() {
   const tenantId = await getTenantId()
-  const lista = await db.produto.findMany({
-    where: { tenantId, ativo: true },
-    orderBy: { nome: "asc" },
-  })
-  return lista.map((p) => ({ ...p, preco: Number(p.preco) }))
+  const rows = await db.$queryRaw<Array<{
+    id: string; nome: string; preco: string; categoria: string
+    ativo: boolean; estoque: number; estoqueMinimo: number
+  }>>`
+    SELECT id, nome, preco::text, categoria::text, ativo, estoque, "estoqueMinimo"
+    FROM "Produto"
+    WHERE "tenantId" = ${tenantId} AND ativo = true
+    ORDER BY nome ASC
+  `
+  return rows.map((p) => ({
+    ...p,
+    preco: Number(p.preco),
+    categoria: p.categoria as "BEBIDA" | "ALIMENTO" | "OUTRO",
+  }))
 }
 
 export async function excluirProduto(id: string) {
   await getTenantId()
-  await db.produto.update({ where: { id }, data: { ativo: false } })
+  await db.$executeRaw`UPDATE "Produto" SET ativo = false WHERE id = ${id}`
   revalidatePath("/dashboard/bar")
 }
 
@@ -30,20 +40,29 @@ export async function criarProduto(data: {
   nome: string
   preco: number
   categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"
+  estoque: number
+  estoqueMinimo: number
 }) {
   const tenantId = await getTenantId()
-  await db.produto.create({
-    data: { ...data, tenantId },
-  })
+  await db.$executeRaw`
+    INSERT INTO "Produto" (id, nome, preco, categoria, "tenantId", ativo, estoque, "estoqueMinimo")
+    VALUES (gen_random_uuid(), ${data.nome}, ${data.preco}, ${data.categoria}::"CategoriaProduto", ${tenantId}, true, ${data.estoque}, ${data.estoqueMinimo})
+  `
   revalidatePath("/dashboard/bar")
 }
 
 export async function atualizarProduto(
   id: string,
-  data: { nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO" }
+  data: { nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; estoque: number; estoqueMinimo: number }
 ) {
   await getTenantId()
-  await db.produto.update({ where: { id }, data })
+  await db.$executeRaw`
+    UPDATE "Produto"
+    SET nome = ${data.nome}, preco = ${data.preco},
+        categoria = ${data.categoria}::"CategoriaProduto",
+        estoque = ${data.estoque}, "estoqueMinimo" = ${data.estoqueMinimo}
+    WHERE id = ${id}
+  `
   revalidatePath("/dashboard/bar")
 }
 
@@ -135,6 +154,15 @@ export async function criarVenda(data: {
         ${item.quantidade}
       )
     `
+    await db.$executeRaw`
+      UPDATE "Produto" SET estoque = GREATEST(0, estoque - ${item.quantidade}) WHERE id = ${item.produtoId}
+    `
+    const pRows = await db.$queryRaw<Array<{ nome: string; estoque: number; estoqueMinimo: number }>>`
+      SELECT nome, estoque, "estoqueMinimo" FROM "Produto" WHERE id = ${item.produtoId}
+    `
+    if (pRows[0] && pRows[0].estoque <= pRows[0].estoqueMinimo) {
+      await enviarAlertaEstoqueBaixo(pRows[0]).catch(() => {})
+    }
   }
 
   revalidatePath("/dashboard/bar")
@@ -218,6 +246,15 @@ export async function criarVendaFiado(data: {
     await db.lancamentoFiado.create({
       data: { contaId: data.contaId, descricao, valor, produtoId: item.produtoId },
     })
+    await db.$executeRaw`
+      UPDATE "Produto" SET estoque = GREATEST(0, estoque - ${item.quantidade}) WHERE id = ${item.produtoId}
+    `
+    const pRows = await db.$queryRaw<Array<{ nome: string; estoque: number; estoqueMinimo: number }>>`
+      SELECT nome, estoque, "estoqueMinimo" FROM "Produto" WHERE id = ${item.produtoId}
+    `
+    if (pRows[0] && pRows[0].estoque <= pRows[0].estoqueMinimo) {
+      await enviarAlertaEstoqueBaixo(pRows[0]).catch(() => {})
+    }
   }
   revalidatePath("/dashboard/fiado")
   revalidatePath("/dashboard")

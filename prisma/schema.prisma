@@ -23,6 +23,7 @@ model Tenant {
   produtos    Produto[]
   planos      Plano[]
   vendas      Venda[]
+  comandas    Comanda[]
 }
 
 // ─────────────────────────────────────────────
@@ -169,15 +170,18 @@ enum TipoAgendamento {
 // ─────────────────────────────────────────────
 
 model Produto {
-  id          String           @id @default(cuid())
-  nome        String
-  preco       Decimal          @db.Decimal(10, 2)
-  categoria   CategoriaProduto
-  tenantId    String
-  tenant      Tenant           @relation(fields: [tenantId], references: [id])
-  lancamentos LancamentoFiado[]
-  itensVenda  ItemVenda[]
-  ativo       Boolean          @default(true)
+  id            String           @id @default(cuid())
+  nome          String
+  preco         Decimal          @db.Decimal(10, 2)
+  categoria     CategoriaProduto
+  tenantId      String
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  lancamentos   LancamentoFiado[]
+  itensVenda    ItemVenda[]
+  itensComanda  ItemComanda[]
+  ativo         Boolean          @default(true)
+  estoque       Int              @default(0)
+  estoqueMinimo Int              @default(5)
 }
 
 enum CategoriaProduto {
@@ -250,6 +254,40 @@ model PagamentoFiado {
   valor      Decimal    @db.Decimal(10, 2)
   observacao String?
   criadoEm   DateTime   @default(now())
+}
+
+// ─────────────────────────────────────────────
+// COMANDA (tab aberta por cliente no bar)
+// ─────────────────────────────────────────────
+
+model Comanda {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  clienteNome     String
+  clienteTelefone String?
+  status          StatusComanda   @default(ABERTA)
+  formaPagamento  FormaPagamento?
+  criadoEm        DateTime        @default(now())
+  fechadoEm       DateTime?
+  itens           ItemComanda[]
+}
+
+model ItemComanda {
+  id          String   @id @default(cuid())
+  comandaId   String
+  comanda     Comanda  @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  produtoId   String?
+  produto     Produto? @relation(fields: [produtoId], references: [id])
+  produtoNome String
+  preco       Decimal  @db.Decimal(10, 2)
+  quantidade  Int
+}
+
+enum StatusComanda {
+  ABERTA
+  FECHADA
+  CANCELADA
 }
 
 // ─────────────────────────────────────────────

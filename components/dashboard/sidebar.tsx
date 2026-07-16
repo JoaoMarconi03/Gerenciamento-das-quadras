@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   CircleDollarSign,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CircleDollarSign, exact: false },
   { href: "/dashboard/clientes", label: "Clientes", icon: Users, exact: false },
   { href: "/dashboard/bar", label: "Bar & Fiado", icon: ShoppingCart, exact: false },
+  { href: "/dashboard/comandas", label: "Comandas", icon: ClipboardList, exact: false },
   { href: "/dashboard/quadras", label: "Quadras", icon: Trophy, exact: false },
   { href: "/dashboard/planos", label: "Planos Mensais", icon: Star, exact: false },
 ]

@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils"
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
 
-type Produto      = { id: string; nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; ativo: boolean }
+type Produto      = { id: string; nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; ativo: boolean; estoque: number; estoqueMinimo: number }
 type ItemVenda    = { produtoId: string; nome: string; preco: number; quantidade: number }
 type FormaPagamento = "DINHEIRO" | "PIX" | "CARTAO"
 type ModoPag      = FormaPagamento | "FIADO"
@@ -69,7 +69,7 @@ export default function BarPage() {
   const [produtos, setProdutos]           = useState<Produto[]>([])
   const [dialogProduto, setDialogProduto] = useState(false)
   const [editando, setEditando]           = useState<Produto | null>(null)
-  const [formProd, setFormProd]           = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"] })
+  const [formProd, setFormProd]           = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"], estoque: "0", estoqueMinimo: "5" })
   const [salvandoProduto, setSalvando]    = useState(false)
 
   // ── vendas ──
@@ -141,13 +141,13 @@ export default function BarPage() {
 
   function abrirNovoProduto() {
     setEditando(null)
-    setFormProd({ nome: "", preco: "", categoria: "BEBIDA" })
+    setFormProd({ nome: "", preco: "", categoria: "BEBIDA", estoque: "0", estoqueMinimo: "5" })
     setDialogProduto(true)
   }
 
   function abrirEditarProduto(p: Produto) {
     setEditando(p)
-    setFormProd({ nome: p.nome, preco: String(p.preco), categoria: p.categoria })
+    setFormProd({ nome: p.nome, preco: String(p.preco), categoria: p.categoria, estoque: String(p.estoque), estoqueMinimo: String(p.estoqueMinimo) })
     setDialogProduto(true)
   }
 
@@ -155,13 +155,14 @@ export default function BarPage() {
     if (!formProd.nome || !formProd.preco) return
     setSalvando(true)
     const preco = parseFloat(formProd.preco)
+    const estoque = parseInt(formProd.estoque) || 0
+    const estoqueMinimo = parseInt(formProd.estoqueMinimo) || 5
     if (editando) {
-      await atualizarProduto(editando.id, { nome: formProd.nome, preco, categoria: formProd.categoria })
-      setProdutos((prev) => prev.map((p) => p.id === editando.id ? { ...p, nome: formProd.nome, preco, categoria: formProd.categoria } : p))
-    } else {
-      await criarProduto({ nome: formProd.nome, preco, categoria: formProd.categoria })
-      buscarProdutos().then(setProdutos)
+      await atualizarProduto(editando.id, { nome: formProd.nome, preco, categoria: formProd.categoria, estoque, estoqueMinimo })
+    }else {
+      await criarProduto({ nome: formProd.nome, preco, categoria: formProd.categoria, estoque, estoqueMinimo })
     }
+    buscarProdutos().then(setProdutos)
     setSalvando(false)
     setDialogProduto(false)
   }
@@ -469,7 +470,17 @@ export default function BarPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
-                          <p className="text-lg font-bold text-primary">R$ {p.preco.toFixed(2)}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-base font-bold text-primary">R$ {p.preco.toFixed(2)}</p>
+                            <span className={cn(
+                              "text-xs px-1.5 py-0.5 rounded-full font-medium",
+                              p.estoque <= 0 ? "bg-red-500/10 text-red-500" :
+                              p.estoque <= p.estoqueMinimo ? "bg-yellow-500/10 text-yellow-600" :
+                              "bg-green-500/10 text-green-600"
+                            )}>
+                              {p.estoque} un.
+                            </span>
+                          </div>
                         </div>
                         <div className="flex gap-1 shrink-0">
                           <Button variant="ghost" size="icon" onClick={() => abrirEditarProduto(p)} className="text-muted-foreground hover:text-foreground">
@@ -967,6 +978,18 @@ export default function BarPage() {
                     <SelectItem value="OUTRO" className="text-foreground">Outro</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Estoque atual (un.)</Label>
+                <Input type="number" min="0" step="1" value={formProd.estoque} onChange={(e) => setFormProd((f) => ({ ...f, estoque: e.target.value }))}
+                  className="bg-secondary border-border text-foreground" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Mínimo para alerta</Label>
+                <Input type="number" min="0" step="1" value={formProd.estoqueMinimo} onChange={(e) => setFormProd((f) => ({ ...f, estoqueMinimo: e.target.value }))}
+                  className="bg-secondary border-border text-foreground" />
               </div>
             </div>
             <div className="flex gap-2 pt-1">
