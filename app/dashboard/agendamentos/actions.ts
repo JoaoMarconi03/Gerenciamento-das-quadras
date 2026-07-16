@@ -208,7 +208,7 @@ export async function reverterPagamento(id: string) {
 
 export async function excluirAgendamento(id: string) {
   await getSession()
-  await db.agendamento.delete({ where: { id } })
+  await db.$executeRaw`DELETE FROM "Agendamento" WHERE id = ${id}`
   revalidatePath("/dashboard/agendamentos")
   revalidatePath("/dashboard")
 }
