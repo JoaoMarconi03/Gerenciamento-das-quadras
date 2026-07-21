@@ -21,7 +21,7 @@ export default async function ArenaVotocelPage() {
             <span className="font-bold text-lg">Arena Votocel</span>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/arena-votocel/login">Área admin</Link>
+            <Link href="/login">Área admin</Link>
           </Button>
         </div>
       </header>

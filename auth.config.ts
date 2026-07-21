@@ -42,6 +42,7 @@ export const authConfig: NextAuthConfig = {
         session.user.id = token.sub
         session.user.role = token.role
         session.user.tenantId = token.tenantId
+        session.user.tenantNome = token.tenantNome
       }
       return session
     },

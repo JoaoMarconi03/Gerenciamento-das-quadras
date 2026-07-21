@@ -21,7 +21,7 @@ export default async function ArenaBrejaoPage() {
             <span className="font-bold text-lg">Brejão Arena</span>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/arena-brejao/login">Área admin</Link>
+            <Link href="/login">Área admin</Link>
           </Button>
         </div>
       </header>

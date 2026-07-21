@@ -19,6 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const usuario = await db.usuario.findUnique({
           where: { email: credentials.email as string },
+          include: { tenant: true },
         })
 
         if (!usuario) return null
@@ -36,6 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: usuario.nome,
           role: usuario.role,
           tenantId: usuario.tenantId,
+          tenantNome: usuario.tenant.nome,
         }
       },
     }),
@@ -46,6 +48,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.role = (user as any).role
         token.tenantId = (user as any).tenantId
+        token.tenantNome = (user as any).tenantNome
       }
       return token
     },

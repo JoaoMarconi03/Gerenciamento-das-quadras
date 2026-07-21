@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -13,25 +13,13 @@ function getIniciais(nome: string) {
 export function DashboardShell({
   children,
   tenantNome = "Gestão de Arena",
-  tenantSlug = "",
 }: {
   children: ReactNode
   tenantNome?: string
-  tenantSlug?: string
 }) {
   const [desktopOpen, setDesktopOpen] = useState(true)
   const [mobileOpen, setMobileOpen]   = useState(false)
   const iniciais = getIniciais(tenantNome)
-
-  useEffect(() => {
-    const el = document.documentElement
-    if (tenantSlug === "arena-brothers") {
-      el.classList.add("theme-brothers")
-    } else {
-      el.classList.remove("theme-brothers")
-    }
-    return () => el.classList.remove("theme-brothers")
-  }, [tenantSlug])
 
   return (
     <div className="flex h-screen overflow-hidden">

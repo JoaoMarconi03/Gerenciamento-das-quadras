@@ -1,59 +1,27 @@
 "use client"
 
 import { useState } from "react"
-import { signIn } from "next-auth/react"
+import { signIn, getSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Trophy } from "lucide-react"
+import { Eye, EyeOff, Trophy, ChevronRight } from "lucide-react"
 
-type LoginTema = {
-  panelBg: string
-  glow1: string
-  glow2: string
-  iconBg: string
-  iconColor: string
-  inputFocus: string
-  btnBg: string
-  btnHover: string
-  btnColor: string
-}
-
-const TEMA_VERDE: LoginTema = {
-  panelBg:    "linear-gradient(145deg, #0a0a0a 0%, #071207 50%, #0d1f0d 100%)",
-  glow1:      "rgba(34,197,94,0.12)",
-  glow2:      "rgba(22,163,74,0.08)",
-  iconBg:     "#16a34a",
+const TEMA = {
+  panelBg:    "linear-gradient(145deg, #0a0a0a 0%, #0a1628 50%, #0f1e3d 100%)",
+  glow1:      "rgba(29,78,216,0.20)",
+  glow2:      "rgba(29,78,216,0.10)",
+  iconBg:     "#1d4ed8",
   iconColor:  "#ffffff",
-  inputFocus: "#16a34a",
-  btnBg:      "#16a34a",
-  btnHover:   "#15803d",
+  inputFocus: "#1d4ed8",
+  btnBg:      "#1d4ed8",
+  btnHover:   "#1e40af",
   btnColor:   "#ffffff",
 }
 
-const TEMA_BROTHERS: LoginTema = {
-  panelBg:    "linear-gradient(145deg, #0a1628 0%, #0f1e3d 50%, #0a1628 100%)",
-  glow1:      "rgba(29,78,216,0.20)",
-  glow2:      "rgba(250,204,21,0.08)",
-  iconBg:     "#facc15",
-  iconColor:  "#1d4ed8",
-  inputFocus: "#1d4ed8",
-  btnBg:      "#facc15",
-  btnHover:   "#eab308",
-  btnColor:   "#1d4ed8",
-}
-
-export const TEMAS_LOGIN = { verde: TEMA_VERDE, brothers: TEMA_BROTHERS }
-
-export function LoginForm({
-  voltarHref,
-  arenaLabel,
-  tema = "verde",
-}: {
-  voltarHref?: string
-  arenaLabel?: string
-  tema?: keyof typeof TEMAS_LOGIN
-} = {}) {
-  const t = TEMAS_LOGIN[tema]
+export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
+  const t = TEMA
   const router = useRouter()
+  const [etapa, setEtapa]               = useState<"credenciais" | "confirmar">("credenciais")
+  const [tenantNome, setTenantNome]     = useState("")
   const [email, setEmail]               = useState("")
   const [senha, setSenha]               = useState("")
   const [mostrarSenha, setMostrarSenha] = useState(false)
@@ -65,9 +33,64 @@ export function LoginForm({
     setErro("")
     setCarregando(true)
     const resultado = await signIn("credentials", { email, password: senha, redirect: false })
+    if (resultado?.error) {
+      setCarregando(false)
+      setErro("E-mail ou senha inválidos.")
+      return
+    }
+    const session = await getSession()
     setCarregando(false)
-    if (resultado?.error) { setErro("E-mail ou senha inválidos."); return }
+    setTenantNome(session?.user?.tenantNome ?? "sua arena")
+    setEtapa("confirmar")
+  }
+
+  function entrarNoSistema() {
     router.push("/dashboard")
+  }
+
+  if (etapa === "confirmar") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#ffffff" }}>
+        <div className="w-full max-w-sm text-center">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-6" style={{ background: t.iconBg }}>
+            <Trophy className="w-6 h-6" style={{ color: t.iconColor }} />
+          </div>
+          <p className="text-sm mb-1" style={{ color: "#6b7280" }}>Selecione a arena para continuar</p>
+          <h2 className="text-xl font-bold mb-8" style={{ color: "#0a0a0a" }}>{tenantNome}</h2>
+
+          <button
+            type="button"
+            onClick={entrarNoSistema}
+            className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl mb-4"
+            style={{ border: "1.5px solid #e5e7eb", background: "#fff", textAlign: "left" }}
+            onMouseOver={(e) => (e.currentTarget.style.borderColor = t.inputFocus)}
+            onMouseOut={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}
+          >
+            <span className="flex items-center gap-3">
+              <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#eff2ff" }}>
+                <Trophy className="w-4 h-4" style={{ color: t.iconBg }} />
+              </span>
+              <span className="font-semibold text-sm" style={{ color: "#111827" }}>{tenantNome}</span>
+            </span>
+            <ChevronRight className="w-4 h-4" style={{ color: "#9ca3af" }} />
+          </button>
+
+          <button
+            type="button"
+            onClick={entrarNoSistema}
+            style={{
+              width: "100%", height: "2.75rem", borderRadius: "0.5rem",
+              background: t.btnBg, color: t.btnColor,
+              fontWeight: 600, fontSize: "0.875rem", border: "none", cursor: "pointer",
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.background = t.btnHover)}
+            onMouseOut={(e) => (e.currentTarget.style.background = t.btnBg)}
+          >
+            Entrar
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -94,8 +117,7 @@ export function LoginForm({
               <Trophy className="w-6 h-6" style={{ color: t.iconColor }} />
             </div>
             <div>
-              <span className="font-bold text-xl text-white block">Gestão de Quadra</span>
-              {arenaLabel && <span className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>{arenaLabel}</span>}
+              <span className="font-bold text-xl text-white block">Gerenciamento de Quadras</span>
             </div>
           </div>
         </div>

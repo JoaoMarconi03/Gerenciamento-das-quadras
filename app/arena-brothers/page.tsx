@@ -24,7 +24,7 @@ export default async function ArenaBrothersPage() {
             <span className="font-bold text-lg text-white">Arena Brothers</span>
           </div>
           <Link
-            href="/arena-brothers/login"
+            href="/login"
             className="text-sm font-medium px-3 py-1.5 rounded-md transition-colors"
             style={{ color: "#facc15" }}
           >
