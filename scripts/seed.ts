@@ -57,14 +57,14 @@ async function main() {
   const produtosExistentes = await db.produto.count({ where: { tenantId: tenant.id } })
   if (produtosExistentes === 0) {
     const produtos = [
-      { nome: "Água 500ml", preco: 3, categoria: "BEBIDA" as const },
-      { nome: "Água 1L", preco: 5, categoria: "BEBIDA" as const },
-      { nome: "Refrigerante Lata", preco: 8, categoria: "BEBIDA" as const },
-      { nome: "Cerveja 600ml", preco: 15, categoria: "BEBIDA" as const },
-      { nome: "Energético 473ml", preco: 18, categoria: "BEBIDA" as const },
-      { nome: "Isotônico 500ml", preco: 8, categoria: "BEBIDA" as const },
-      { nome: "Coxinha", preco: 6, categoria: "ALIMENTO" as const },
-      { nome: "Pão de Queijo", preco: 4, categoria: "ALIMENTO" as const },
+      { nome: "Água 500ml", preco: 3, categoria: "BEBIDAS" as const },
+      { nome: "Água 1L", preco: 5, categoria: "BEBIDAS" as const },
+      { nome: "Refrigerante Lata", preco: 8, categoria: "LATAS" as const },
+      { nome: "Cerveja 600ml", preco: 15, categoria: "CERVEJA_600ML" as const },
+      { nome: "Energético 473ml", preco: 18, categoria: "LATAS" as const },
+      { nome: "Isotônico 500ml", preco: 8, categoria: "BEBIDAS" as const },
+      { nome: "Coxinha", preco: 6, categoria: "PETISCOS_DOCES" as const },
+      { nome: "Pão de Queijo", preco: 4, categoria: "PETISCOS_DOCES" as const },
     ]
     for (const p of produtos) {
       await db.produto.create({ data: { ...p, tenantId: tenant!.id } })

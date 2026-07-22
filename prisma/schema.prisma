@@ -206,9 +206,13 @@ model Produto {
 }
 
 enum CategoriaProduto {
-  BEBIDA
-  ALIMENTO
-  OUTRO
+  BEBIDAS
+  CERVEJA_600ML
+  LONG_NECK
+  PETISCOS_DOCES
+  PORCOES
+  LATAS
+  ESPETOS
 }
 
 // ─────────────────────────────────────────────

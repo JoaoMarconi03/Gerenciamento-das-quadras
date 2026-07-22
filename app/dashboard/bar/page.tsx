@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
 
 // ─── tipos ───────────────────────────────────────────────────────────────────
 
-type Produto      = { id: string; nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; ativo: boolean; estoque: number; estoqueMinimo: number }
+type Produto      = { id: string; nome: string; preco: number; categoria: "BEBIDAS" | "CERVEJA_600ML" | "LONG_NECK" | "PETISCOS_DOCES" | "PORCOES" | "LATAS" | "ESPETOS"; ativo: boolean; estoque: number; estoqueMinimo: number }
 type ItemVenda    = { produtoId: string; nome: string; preco: number; quantidade: number }
 type FormaPagamento = "DINHEIRO" | "PIX" | "CARTAO"
 type ModoPag      = FormaPagamento | "FIADO"
@@ -40,7 +40,15 @@ type ProdFiado    = { id: string; nome: string; preco: number }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const categoriaLabel: Record<string, string> = { BEBIDA: "Bebida", ALIMENTO: "Alimento", OUTRO: "Outro" }
+const categoriaLabel: Record<string, string> = {
+  BEBIDAS: "Bebidas",
+  CERVEJA_600ML: "Cervejas 600ml",
+  LONG_NECK: "Long Necks",
+  PETISCOS_DOCES: "Petiscos e doces",
+  PORCOES: "Porções",
+  LATAS: "Latas",
+  ESPETOS: "Espetos",
+}
 
 const pagamentoInfo: Record<FormaPagamento, { label: string; icon: React.ElementType; cor: string }> = {
   DINHEIRO: { label: "Dinheiro",   icon: Banknote,   cor: "text-green-400 bg-green-400/10"   },
@@ -70,7 +78,7 @@ export default function BarPage() {
   const [produtos, setProdutos]           = useState<Produto[]>([])
   const [dialogProduto, setDialogProduto] = useState(false)
   const [editando, setEditando]           = useState<Produto | null>(null)
-  const [formProd, setFormProd]           = useState({ nome: "", preco: "", categoria: "BEBIDA" as Produto["categoria"], estoque: "0", estoqueMinimo: "5" })
+  const [formProd, setFormProd]           = useState({ nome: "", preco: "", categoria: "BEBIDAS" as Produto["categoria"], estoque: "0", estoqueMinimo: "5" })
   const [salvandoProduto, setSalvando]    = useState(false)
 
   // ── vendas ──
@@ -142,7 +150,7 @@ export default function BarPage() {
 
   function abrirNovoProduto() {
     setEditando(null)
-    setFormProd({ nome: "", preco: "", categoria: "BEBIDA", estoque: "0", estoqueMinimo: "5" })
+    setFormProd({ nome: "", preco: "", categoria: "BEBIDAS", estoque: "0", estoqueMinimo: "5" })
     setDialogProduto(true)
   }
 
@@ -320,7 +328,7 @@ export default function BarPage() {
     })
   }
 
-  const grupos = ["BEBIDA", "ALIMENTO", "OUTRO"] as const
+  const grupos = ["BEBIDAS", "CERVEJA_600ML", "LONG_NECK", "LATAS", "PETISCOS_DOCES", "PORCOES", "ESPETOS"] as const
 
   // ─── render ───────────────────────────────────────────────────────────────
 
@@ -989,9 +997,13 @@ export default function BarPage() {
                 <Select value={formProd.categoria} onValueChange={(v) => setFormProd((f) => ({ ...f, categoria: v as Produto["categoria"] }))}>
                   <SelectTrigger className="bg-secondary border-border text-foreground"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    <SelectItem value="BEBIDA" className="text-foreground">Bebida</SelectItem>
-                    <SelectItem value="ALIMENTO" className="text-foreground">Alimento</SelectItem>
-                    <SelectItem value="OUTRO" className="text-foreground">Outro</SelectItem>
+                    <SelectItem value="BEBIDAS" className="text-foreground">Bebidas</SelectItem>
+                    <SelectItem value="CERVEJA_600ML" className="text-foreground">Cervejas 600ml</SelectItem>
+                    <SelectItem value="LONG_NECK" className="text-foreground">Long Necks</SelectItem>
+                    <SelectItem value="LATAS" className="text-foreground">Latas</SelectItem>
+                    <SelectItem value="PETISCOS_DOCES" className="text-foreground">Petiscos e doces</SelectItem>
+                    <SelectItem value="PORCOES" className="text-foreground">Porções</SelectItem>
+                    <SelectItem value="ESPETOS" className="text-foreground">Espetos</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -26,7 +26,7 @@ export async function buscarProdutos() {
   return rows.map((p) => ({
     ...p,
     preco: Number(p.preco),
-    categoria: p.categoria as "BEBIDA" | "ALIMENTO" | "OUTRO",
+    categoria: p.categoria as "BEBIDAS" | "CERVEJA_600ML" | "LONG_NECK" | "PETISCOS_DOCES" | "PORCOES" | "LATAS" | "ESPETOS",
   }))
 }
 
@@ -39,7 +39,7 @@ export async function excluirProduto(id: string) {
 export async function criarProduto(data: {
   nome: string
   preco: number
-  categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"
+  categoria: "BEBIDAS" | "CERVEJA_600ML" | "LONG_NECK" | "PETISCOS_DOCES" | "PORCOES" | "LATAS" | "ESPETOS"
   estoque: number
   estoqueMinimo: number
 }) {
@@ -53,7 +53,7 @@ export async function criarProduto(data: {
 
 export async function atualizarProduto(
   id: string,
-  data: { nome: string; preco: number; categoria: "BEBIDA" | "ALIMENTO" | "OUTRO"; estoque: number; estoqueMinimo: number }
+  data: { nome: string; preco: number; categoria: "BEBIDAS" | "CERVEJA_600ML" | "LONG_NECK" | "PETISCOS_DOCES" | "PORCOES" | "LATAS" | "ESPETOS"; estoque: number; estoqueMinimo: number }
 ) {
   await getTenantId()
   await db.$executeRaw`
