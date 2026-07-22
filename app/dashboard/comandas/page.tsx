@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react"
 import {
-  Plus, Search, Trash2, X, CheckCircle2,
+  Plus, Minus, Search, Trash2, X, CheckCircle2,
   Banknote, Smartphone, CreditCard, Phone, User, Clock,
   ShoppingBag, AlertTriangle,
 } from "lucide-react"
@@ -29,6 +29,19 @@ import { toast } from "sonner"
 type Produto = { id: string; nome: string; preco: number; categoria: string; estoque: number }
 type Cliente = { id: string; nome: string; telefone: string | null }
 type FormaPagamento = "DINHEIRO" | "PIX" | "CARTAO"
+
+const categoriaLabel: Record<string, string> = {
+  BEBIDAS: "Bebidas",
+  CERVEJA_600ML: "Cervejas 600ml",
+  LONG_NECK: "Long Necks",
+  PETISCOS_DOCES: "Petiscos e doces",
+  PORCOES: "Porções",
+  LATAS: "Latas",
+  ESPETOS: "Espetos",
+}
+const ORDEM_CATEGORIAS = ["BEBIDAS", "CERVEJA_600ML", "LONG_NECK", "LATAS", "PETISCOS_DOCES", "PORCOES", "ESPETOS"]
+
+type ItemCarrinho = { produtoId: string; produtoNome: string; preco: number; quantidade: number; estoqueMax: number }
 
 const pagInfo: Record<FormaPagamento, { label: string; icon: React.ElementType }> = {
   DINHEIRO: { label: "Dinheiro", icon: Banknote },
@@ -63,6 +76,8 @@ export default function ComandasPage() {
   const [formNova, setFormNova]   = useState({ nome: "", telefone: "" })
   const [buscaProd, setBuscaProd] = useState("")
   const [formaPag, setFormaPag]   = useState<FormaPagamento>("DINHEIRO")
+  const [filtroCategoria, setFiltroCategoria] = useState<string | null>(null)
+  const [carrinhoItem, setCarrinhoItem] = useState<ItemCarrinho[]>([])
 
   async function recarregar() {
     const lista = await buscarComandasAbertas()
@@ -79,9 +94,12 @@ export default function ComandasPage() {
     buscarClientesParaComanda().then(setClientes)
   }, [])
 
-  const prodFiltrados = buscaProd
-    ? produtos.filter((p) => p.nome.toLowerCase().includes(buscaProd.toLowerCase()))
-    : produtos
+  const prodFiltrados = produtos.filter((p) =>
+    (!buscaProd || p.nome.toLowerCase().includes(buscaProd.toLowerCase())) &&
+    (!filtroCategoria || p.categoria === filtroCategoria)
+  )
+  const categoriasDisponiveis = ORDEM_CATEGORIAS.filter((cat) => produtos.some((p) => p.categoria === cat))
+  const totalCarrinho = carrinhoItem.reduce((soma, i) => soma + i.preco * i.quantidade, 0)
 
   function abrirDetalhe(c: Comanda) {
     setComandaSel(c)
@@ -90,6 +108,8 @@ export default function ComandasPage() {
 
   function handleAbrirItem() {
     setBuscaProd("")
+    setFiltroCategoria(null)
+    setCarrinhoItem([])
     setDialogItem(true)
   }
 
@@ -126,22 +146,48 @@ export default function ComandasPage() {
       )
     : clientes
 
-  function handleAdicionarItem(produto: Produto) {
-    if (!comandaSel) return
+  function adicionarAoCarrinho(produto: Produto) {
+    if (produto.estoque <= 0) return
+    setCarrinhoItem((atual) => {
+      const existe = atual.find((i) => i.produtoId === produto.id)
+      if (existe) {
+        if (existe.quantidade >= produto.estoque) return atual
+        return atual.map((i) => i.produtoId === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i)
+      }
+      return [...atual, { produtoId: produto.id, produtoNome: produto.nome, preco: produto.preco, quantidade: 1, estoqueMax: produto.estoque }]
+    })
+  }
+
+  function ajustarQtdCarrinho(produtoId: string, delta: number) {
+    setCarrinhoItem((atual) =>
+      atual
+        .map((i) => i.produtoId === produtoId
+          ? { ...i, quantidade: Math.min(Math.max(i.quantidade + delta, 0), i.estoqueMax) }
+          : i)
+        .filter((i) => i.quantidade > 0)
+    )
+  }
+
+  function confirmarCarrinho() {
+    if (!comandaSel || carrinhoItem.length === 0) return
     startTransition(async () => {
-      const { alerta } = await adicionarItemComanda({
-        comandaId: comandaSel.id,
-        produtoId: produto.id,
-        produtoNome: produto.nome,
-        preco: produto.preco,
-        quantidade: 1,
-      })
+      let ultimoAlerta: { nome: string; estoque: number; estoqueMinimo: number } | null = null
+      for (const item of carrinhoItem) {
+        const { alerta } = await adicionarItemComanda({
+          comandaId: comandaSel.id,
+          produtoId: item.produtoId,
+          produtoNome: item.produtoNome,
+          preco: item.preco,
+          quantidade: item.quantidade,
+        })
+        if (alerta) ultimoAlerta = alerta
+      }
       await recarregar()
       buscarProdutosParaComanda().then(setProdutos)
       setDialogItem(false)
-      if (alerta) {
-        toast.warning(`⚠️ Estoque baixo: ${alerta.nome}`, {
-          description: `Restam apenas ${alerta.estoque} unidade${alerta.estoque !== 1 ? "s" : ""} (mínimo: ${alerta.estoqueMinimo})`,
+      if (ultimoAlerta) {
+        toast.warning(`⚠️ Estoque baixo: ${ultimoAlerta.nome}`, {
+          description: `Restam apenas ${ultimoAlerta.estoque} unidade${ultimoAlerta.estoque !== 1 ? "s" : ""} (mínimo: ${ultimoAlerta.estoqueMinimo})`,
           duration: 8000,
         })
       }
@@ -445,7 +491,7 @@ export default function ComandasPage() {
 
       {/* ── Dialog: Adicionar item ── */}
       <Dialog open={dialogItem} onOpenChange={(o) => { if (!o) setDialogItem(false) }}>
-        <DialogContent className="bg-card border-border sm:max-w-sm max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border w-[calc(100%-2rem)] sm:max-w-lg lg:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground">
               Adicionar item — {comandaSel?.clienteNome}
@@ -458,48 +504,129 @@ export default function ComandasPage() {
                 placeholder="Buscar produto..."
                 value={buscaProd}
                 onChange={(e) => setBuscaProd(e.target.value)}
-                className="pl-9 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                className="pl-9 h-11 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
               />
             </div>
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-              {prodFiltrados.length === 0 && (
-                <p className="text-center text-xs text-muted-foreground py-4">
-                  Nenhum produto disponível.
-                </p>
-              )}
-              {prodFiltrados.map((p) => (
+
+            {categoriasDisponiveis.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
                 <button
-                  key={p.id}
                   type="button"
-                  onClick={() => handleAdicionarItem(p)}
-                  disabled={isPending || p.estoque <= 0}
+                  onClick={() => setFiltroCategoria(null)}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2.5 transition-colors text-left",
-                    p.estoque <= 0
-                      ? "opacity-40 cursor-not-allowed"
-                      : "hover:bg-secondary/60"
+                    "shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors",
+                    filtroCategoria === null
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40"
                   )}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{p.nome}</span>
-                    <span className={cn(
-                      "text-xs px-1.5 py-0.5 rounded-full font-medium",
-                      p.estoque <= 0 ? "bg-red-500/10 text-red-500" :
-                      p.estoque <= 5 ? "bg-yellow-500/10 text-yellow-600" :
-                      "bg-green-500/10 text-green-600"
-                    )}>
-                      {p.estoque} un.
-                    </span>
-                  </div>
-                  <span className="text-sm text-primary font-semibold shrink-0">
-                    R$ {p.preco.toFixed(2).replace(".", ",")}
-                  </span>
+                  Todos
                 </button>
-              ))}
+                {categoriasDisponiveis.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setFiltroCategoria(cat)}
+                    className={cn(
+                      "shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap",
+                      filtroCategoria === cat
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    )}
+                  >
+                    {categoriaLabel[cat] ?? cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+              {prodFiltrados.length === 0 && (
+                <p className="text-center text-xs text-muted-foreground py-6">
+                  Nenhum produto encontrado.
+                </p>
+              )}
+              {prodFiltrados.map((p) => {
+                const noCarrinho = carrinhoItem.find((i) => i.produtoId === p.id)?.quantidade ?? 0
+                const esgotado = p.estoque <= 0 || noCarrinho >= p.estoque
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => adicionarAoCarrinho(p)}
+                    disabled={isPending || esgotado}
+                    className={cn(
+                      "w-full flex items-start justify-between gap-3 px-3 py-3 transition-colors text-left",
+                      esgotado ? "opacity-40 cursor-not-allowed" : "hover:bg-secondary/60"
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                      <span className="text-sm font-medium text-foreground break-words">{p.nome}</span>
+                      <span className={cn(
+                        "text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0",
+                        p.estoque <= 0 ? "bg-red-500/10 text-red-500" :
+                        p.estoque <= 5 ? "bg-yellow-500/10 text-yellow-600" :
+                        "bg-green-500/10 text-green-600"
+                      )}>
+                        {p.estoque} un.
+                      </span>
+                    </div>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="text-sm text-primary font-semibold whitespace-nowrap">
+                        R$ {p.preco.toFixed(2).replace(".", ",")}
+                      </span>
+                      <Plus className="w-4 h-4 text-muted-foreground" />
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-            <Button variant="outline" className="w-full border-border" onClick={() => setDialogItem(false)}>
-              Fechar
-            </Button>
+
+            {carrinhoItem.length > 0 && (
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="divide-y divide-border">
+                  {carrinhoItem.map((item) => (
+                    <div key={item.produtoId} className="flex items-center gap-3 px-3 py-2.5 bg-secondary/40">
+                      <span className="text-sm text-foreground font-medium flex-1 min-w-0 break-words">{item.produtoNome}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => ajustarQtdCarrinho(item.produtoId, -1)}
+                          className="w-7 h-7 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-sm font-semibold text-foreground w-5 text-center">{item.quantidade}</span>
+                        <button
+                          type="button"
+                          onClick={() => ajustarQtdCarrinho(item.produtoId, 1)}
+                          disabled={item.quantidade >= item.estoqueMax}
+                          className="w-7 h-7 rounded-md bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <span className="text-sm font-semibold text-primary shrink-0 w-20 text-right">
+                        R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between px-3 py-2.5 bg-primary/5 border-t border-border">
+                  <span className="text-sm font-semibold text-foreground">Total</span>
+                  <span className="text-lg font-bold text-primary">R$ {totalCarrinho.toFixed(2).replace(".", ",")}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setDialogItem(false)} disabled={isPending}>
+                Cancelar
+              </Button>
+              <Button className="flex-1" disabled={carrinhoItem.length === 0 || isPending} onClick={confirmarCarrinho}>
+                {isPending ? "Adicionando…" : carrinhoItem.length > 0 ? `Adicionar · R$ ${totalCarrinho.toFixed(2).replace(".", ",")}` : "Adicionar"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
