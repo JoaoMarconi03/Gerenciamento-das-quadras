@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react"
 import {
   Plus, Minus, Search, Trash2, X, CheckCircle2,
   Banknote, Smartphone, CreditCard, Phone, User, Clock,
-  ShoppingBag, AlertTriangle,
+  ShoppingBag, AlertTriangle, Printer,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -49,6 +49,31 @@ const pagInfo: Record<FormaPagamento, { label: string; icon: React.ElementType }
   CARTAO:   { label: "Cartão",   icon: CreditCard },
 }
 
+const LARGURA_RECIBO = 32
+
+function linhaRecibo(esquerda: string, direita: string) {
+  const espaco = Math.max(LARGURA_RECIBO - esquerda.length - direita.length, 1)
+  return esquerda + " ".repeat(espaco) + direita
+}
+
+function montarRecibo(comanda: Comanda) {
+  const linhas: string[] = []
+  linhas.push("MaPlayce".padStart(Math.ceil((LARGURA_RECIBO + 8) / 2)))
+  linhas.push("Comanda".padStart(Math.ceil((LARGURA_RECIBO + 7) / 2)))
+  linhas.push("-".repeat(LARGURA_RECIBO))
+  linhas.push(`Cliente: ${comanda.clienteNome}`)
+  if (comanda.clienteTelefone) linhas.push(`Tel: ${comanda.clienteTelefone}`)
+  linhas.push(new Date().toLocaleString("pt-BR"))
+  linhas.push("-".repeat(LARGURA_RECIBO))
+  for (const item of comanda.itens) {
+    const nome = `${item.quantidade}x ${item.produtoNome}`.slice(0, 22)
+    const valor = `R$ ${(item.preco * item.quantidade).toFixed(2).replace(".", ",")}`
+    linhas.push(linhaRecibo(nome, valor))
+  }
+  linhas.push(linhaRecibo("TOTAL", `R$ ${comanda.total.toFixed(2).replace(".", ",")}`))
+  return linhas.join("\n")
+}
+
 function tempoAberto(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
   const min = Math.floor(diff / 60_000)
@@ -78,6 +103,7 @@ export default function ComandasPage() {
   const [formaPag, setFormaPag]   = useState<FormaPagamento>("DINHEIRO")
   const [filtroCategoria, setFiltroCategoria] = useState<string | null>(null)
   const [carrinhoItem, setCarrinhoItem] = useState<ItemCarrinho[]>([])
+  const [imprimindo, setImprimindo] = useState(false)
 
   async function recarregar() {
     const lista = await buscarComandasAbertas()
@@ -111,6 +137,31 @@ export default function ComandasPage() {
     setFiltroCategoria(null)
     setCarrinhoItem([])
     setDialogItem(true)
+  }
+
+  async function handleImprimir() {
+    if (!comandaSel || imprimindo) return
+    setImprimindo(true)
+    const requisicao = fetch("http://localhost:9123/imprimir", {
+      method: "POST",
+      body: montarRecibo(comandaSel),
+    }).then((resp) => {
+      if (!resp.ok) throw new Error("Falha ao imprimir")
+    })
+
+    toast.promise(requisicao, {
+      loading: "Imprimindo comanda... pode levar até 30 segundos",
+      success: "Comanda impressa",
+      error: "Ajudante de impressão não encontrado — verifique se o programa está aberto",
+    })
+
+    try {
+      await requisicao
+    } catch {
+      // erro ja exibido pelo toast.promise acima
+    } finally {
+      setImprimindo(false)
+    }
   }
 
   function handleAbrirFechar() {
@@ -464,9 +515,21 @@ export default function ComandasPage() {
             </div>
 
             <div className="space-y-2 pt-2">
-              <Button variant="outline" className="w-full border-border gap-2" onClick={handleAbrirItem}>
-                <Plus className="w-4 h-4" />Adicionar item
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 border-border gap-2" onClick={handleAbrirItem}>
+                  <Plus className="w-4 h-4" />Adicionar item
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="border-border shrink-0"
+                  title={imprimindo ? "Imprimindo..." : "Imprimir comanda"}
+                  disabled={imprimindo}
+                  onClick={handleImprimir}
+                >
+                  <Printer className={cn("w-4 h-4", imprimindo && "animate-pulse")} />
+                </Button>
+              </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
