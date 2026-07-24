@@ -3,8 +3,9 @@
 import { useState } from "react"
 import { signIn, getSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, ChevronRight } from "lucide-react"
+import { Eye, EyeOff, ChevronRight, Check } from "lucide-react"
 import { LogoMark } from "@/components/logo-mark"
+import { ajustarPersistenciaSessao } from "./actions"
 
 const TEMA = {
   panelBg:    "linear-gradient(145deg, #0a0a0a 0%, #0a1628 50%, #0f1e3d 100%)",
@@ -26,6 +27,7 @@ export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
   const [email, setEmail]               = useState("")
   const [senha, setSenha]               = useState("")
   const [mostrarSenha, setMostrarSenha] = useState(false)
+  const [manterConectado, setManterConectado] = useState(true)
   const [erro, setErro]                 = useState("")
   const [carregando, setCarregando]     = useState(false)
 
@@ -39,6 +41,7 @@ export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
       setErro("E-mail ou senha inválidos.")
       return
     }
+    await ajustarPersistenciaSessao(manterConectado)
     const session = await getSession()
     setCarregando(false)
     setTenantNome(session?.user?.tenantNome ?? "sua arena")
@@ -189,6 +192,27 @@ export function LoginForm({ voltarHref }: { voltarHref?: string } = {}) {
                 </button>
               </div>
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none" style={{ marginTop: "-0.25rem" }}>
+              <span
+                onClick={() => setManterConectado((v) => !v)}
+                className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+                style={{
+                  border: `1.5px solid ${manterConectado ? t.inputFocus : "#d1d5db"}`,
+                  background: manterConectado ? t.inputFocus : "#fff",
+                  transition: "background 0.15s, border-color 0.15s",
+                }}
+              >
+                {manterConectado && <Check className="w-3 h-3" style={{ color: "#fff" }} strokeWidth={3} />}
+              </span>
+              <span
+                onClick={() => setManterConectado((v) => !v)}
+                className="text-xs"
+                style={{ color: "#374151" }}
+              >
+                Manter conectado
+              </span>
+            </label>
 
             {erro && (
               <p className="text-xs px-3 py-2 rounded-lg" style={{ color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca" }}>
